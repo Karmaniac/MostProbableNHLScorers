@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Who Scores Tonight</title>
+<meta name="description" content="Every NHL skater playing today, ranked by chance to score. Updated daily.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Libre+Franklin:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one 760px column; a sticky search/filter bar over a ranked list. Each row: rank | player + stats | chance to score. */
+:root {
+  --ice: #F2F5F8;
+  --board: #FFFFFF;
+  --ink: #132030;
+  --muted: #586779;
+  --line: #D5DDE6;
+  --blue: #1E4F93;
+  --blue-soft: #E2EBF6;
+  --red: #C3282E;
+  --red-soft: #F7E3E3;
+  --amber: #8A5A00;
+  --amber-soft: #FBF0D9;
+  --display: "Big Shoulders Display", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Libre Franklin", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ice: #0D1520; --board: #142030; --ink: #E5ECF3; --muted: #95A4B6; --line: #26364A;
+    --blue: #7FA9E6; --blue-soft: #1B2D45; --red: #F07373; --red-soft: #3A1E24;
+    --amber: #F0C060; --amber-soft: #3A2E14;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--ice); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 760px; margin: 0 auto; padding-inline: 16px; padding-block: max(24px, env(safe-area-inset-top)) max(48px, env(safe-area-inset-bottom)); display: grid; gap: 18px; }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(2.4rem, 9vw, 3.4rem); line-height: 0.95; text-transform: uppercase; margin: 0; text-wrap: balance; }
+header { display: grid; gap: 6px; }
+.sub { color: var(--muted); font-size: 0.9rem; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.sub b { color: var(--ink); font-weight: 600; }
+
+.banner { padding: 10px 14px; border-radius: 10px; background: var(--amber-soft); color: var(--amber); font-size: 0.9rem; }
+
+/* Sticky controls */
+.controls { position: sticky; top: 0; z-index: 2; background: var(--ice); padding-block: 10px; display: grid; gap: 10px; border-bottom: 1px solid var(--line); }
+.search { position: relative; }
+.search input { width: 100%; font: inherit; font-size: 16px; padding: 12px 40px 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--board); color: var(--ink); }
+.search input:focus { outline: 2px solid var(--blue); outline-offset: 0; border-color: transparent; }
+.search button { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: none; color: var(--muted); font-size: 1.3rem; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; }
+.search button:focus-visible { outline: 2px solid var(--blue); }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: none; font: inherit; font-size: 0.82rem; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--board); color: var(--ink); cursor: pointer; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chip[aria-pressed="true"] { background: var(--blue); border-color: var(--blue); color: var(--board); }
+.chip:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+.chip small { opacity: 0.75; margin-left: 4px; }
+.toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); }
+.toolbar label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.toolbar input { accent-color: var(--blue); width: 16px; height: 16px; margin: 0; }
+
+/* Ranked list */
+ol.list { list-style: none; margin: 0; padding: 0; background: var(--board); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.row { display: grid; grid-template-columns: 38px minmax(0, 1fr) 92px; gap: 10px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.row:last-child { border-bottom: 0; }
+.rank { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.who { min-width: 0; display: grid; gap: 2px; }
+.name { font-weight: 600; font-size: 1rem; overflow-wrap: anywhere; }
+.meta { font-size: 0.82rem; color: var(--muted); }
+.meta .tm { color: var(--ink); font-weight: 500; }
+.stats { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 10px; font-variant-numeric: tabular-nums; }
+.flag { justify-self: start; font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: var(--red-soft); color: var(--red); margin-top: 2px; }
+.note { font-size: 0.75rem; color: var(--amber); }
+.odds { display: grid; gap: 5px; justify-items: end; }
+.pct { font-family: var(--display); font-weight: 800; font-size: 1.9rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.pct small { font-size: 0.55em; }
+.row.hot .pct { color: var(--red); }
+.bar { width: 100%; height: 6px; border-radius: 3px; background: var(--blue-soft); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--blue); border-radius: 3px; }
+.row.hot .bar i { background: var(--red); }
+.row.out { opacity: 0.62; }
+
+.empty { padding: 36px 20px; text-align: center; color: var(--muted); background: var(--board); border: 1px solid var(--line); border-radius: 16px; display: grid; gap: 6px; }
+.empty b { color: var(--ink); font-size: 1.05rem; }
+footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; }
+footer code { font-family: var(--mono); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Who scores tonight</h1>
+    <div class="sub" id="sub"><span>Loading today's rankings…</span></div>
+  </header>
+
+  <div class="banner" id="banner" hidden></div>
+
+  <div class="controls" id="controls" hidden>
+    <div class="search">
+      <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Search players. Use commas for several: mcdavid, kaprizov" aria-label="Search players">
+      <button type="button" id="clear" aria-label="Clear search" hidden>×</button>
+    </div>
+    <div class="chips" id="games" role="group" aria-label="Filter by game"></div>
+    <div class="toolbar">
+      <div class="chips" id="pos" role="group" aria-label="Filter by position">
+        <button type="button" class="chip" data-pos="all" aria-pressed="true">All</button>
+        <button type="button" class="chip" data-pos="F" aria-pressed="false">Forwards</button>
+        <button type="button" class="chip" data-pos="D" aria-pressed="false">Defence</button>
+      </div>
+      <label><input type="checkbox" id="hideOut" checked> Hide injured / scratched</label>
+    </div>
+    <div class="toolbar"><span id="count"></span></div>
+  </div>
+
+  <ol class="list" id="list" hidden></ol>
+  <div class="empty" id="empty" hidden></div>
+
+  <footer>
+    <span>Chance to score = 1 − e<sup>−xG</sup>, where xG blends shot rate, shooting %, opponent defence and home ice. Stats from the NHL's public API.</span>
+    <span>Row stats: xG · shots per game · shooting % · last 10 games · opponent defence (1.00 = league average). Rank is overall, so it stays the same when you filter.</span>
+  </footer>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const norm = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z ]/g, " ").replace(/\s+/g, " ").trim();
+  const todayET = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto" }).format(new Date());
+  const fmtDate = (iso) => new Date(iso + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+  const fmtTime = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+  let players = [];
+  const state = { q: "", game: null, pos: "all", hideOut: true };
+  try { state.hideOut = localStorage.getItem("hideOut") !== "0"; } catch (e) {}
+  $("hideOut").checked = state.hideOut;
+
+  function showEmpty(title, text) {
+    $("empty").innerHTML = `<b>${esc(title)}</b><span>${esc(text)}</span>`;
+    $("empty").hidden = false;
+    $("list").hidden = true;
+  }
+
+  function render() {
+    const terms = state.q.split(",").map(norm).filter(Boolean);
+    const game = state.game;
+    const shown = players.filter((p) => {
+      if (state.hideOut && p.flagged) return false;
+      if (state.pos === "D" && p.pos !== "D") return false;
+      if (state.pos === "F" && p.pos === "D") return false;
+      if (game && p.team !== game.home && p.team !== game.away) return false;
+      if (terms.length && !terms.some((t) => p._n.includes(t))) return false;
+      return true;
+    });
+
+    $("count").textContent = `Showing ${shown.length} of ${players.length} players`;
+    if (!shown.length) {
+      showEmpty("No players match", terms.length ? "Check the spelling, or turn off the other filters." : "Try a different filter.");
+      return;
+    }
+    $("empty").hidden = true;
+    $("list").hidden = false;
+    $("list").innerHTML = shown.map((p) => {
+      const pct = p.prob * 100;
+      const stats = [
+        `xG ${p.xg.toFixed(2)}`,
+        p.shots_pg != null ? `${p.shots_pg.toFixed(2)} S/GP` : null,
+        p.sh_pct != null ? `${(p.sh_pct * 100).toFixed(1)}% Sh` : null,
+        p.l10 ? `L10 ${p.l10.replace(" in ", "/")}` : null,
+        p.opp_factor != null ? `OppD ${p.opp_factor.toFixed(2)}` : null,
+      ].filter(Boolean).map((s) => `<span>${esc(s)}</span>`).join("");
+      const missed = p.notes.find((n) => n.includes("missed last"));
+      const others = p.notes.filter((n) => n !== missed);
+      return `<li class="row${pct >= 40 ? " hot" : ""}${p.flagged ? " out" : ""}">
+        <span class="rank">${p.rank}</span>
+        <div class="who">
+          <span class="name">${esc(p.name)}</span>
+          <span class="meta">${esc(p.pos)} · <span class="tm">${esc(p.team)}</span> ${esc(p.opp || "")}</span>
+          <span class="stats">${stats}</span>
+          ${missed ? `<span class="flag">${esc(missed.replace(/^!+\s*/, "").replace(/ \(.*\)$/, ""))}</span>` : ""}
+          ${others.map((n) => `<span class="note">${esc(n)}</span>`).join("")}
+        </div>
+        <div class="odds">
+          <span class="pct">${pct.toFixed(0)}<small>%</small></span>
+          <span class="bar"><i style="width:${Math.min(100, pct / 60 * 100).toFixed(1)}%"></i></span>
+        </div>
+      </li>`;
+    }).join("");
+  }
+
+  function setup(data) {
+    players = data.groups.flatMap((g) => g.players).map((p) => ({ ...p, _n: norm(p.name) }));
+    const updated = new Date(data.generated_at);
+    $("sub").innerHTML = `<span><b>${esc(fmtDate(data.date))}</b></span><span>${data.games.length} game${data.games.length === 1 ? "" : "s"}</span><span>Updated ${esc(updated.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }))}</span>`;
+
+    if (data.date < todayET()) {
+      $("banner").textContent = `This list is for ${fmtDate(data.date)}. Today's update hasn't run yet; check back after 10 AM Eastern.`;
+      $("banner").hidden = false;
+    }
+    if (!data.games.length) {
+      showEmpty("No NHL games today", "The list will be back on the next game day.");
+      return;
+    }
+
+    $("games").innerHTML = `<button type="button" class="chip" data-g="-1" aria-pressed="true">All games</button>` +
+      data.games.map((g, i) => `<button type="button" class="chip" data-g="${i}" aria-pressed="false">${esc(g.away)} @ ${esc(g.home)}<small>${esc(fmtTime(g.start))}</small></button>`).join("");
+    $("games").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-g]");
+      if (!btn) return;
+      const i = +btn.dataset.g;
+      state.game = i < 0 ? null : data.games[i];
+      $("games").querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", String(c === btn)));
+      render();
+    });
+
+    $("controls").hidden = false;
+    render();
+  }
+
+  $("q").addEventListener("input", (e) => { state.q = e.target.value; $("clear").hidden = !state.q; render(); });
+  $("clear").addEventListener("click", () => { $("q").value = ""; state.q = ""; $("clear").hidden = true; render(); $("q").focus(); });
+  $("pos").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-pos]");
+    if (!btn) return;
+    state.pos = btn.dataset.pos;
+    $("pos").querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", String(c === btn)));
+    render();
+  });
+  $("hideOut").addEventListener("change", (e) => {
+    state.hideOut = e.target.checked;
+    try { localStorage.setItem("hideOut", state.hideOut ? "1" : "0"); } catch (err) {}
+    render();
+  });
+
+  fetch("data.json", { cache: "no-store" })
+    .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(setup)
+    .catch(() => {
+      $("sub").innerHTML = "";
+      showEmpty("Rankings aren't available yet", "The daily update creates them. If this is a new site, run the \"Update picks\" workflow once from the Actions tab on GitHub.");
+    });
+})();
+</script>
+</body>
+</html>

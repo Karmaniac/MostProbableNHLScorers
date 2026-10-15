@@ -1,0 +1,445 @@
+<title>Who Scores Tonight</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Libre+Franklin:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one 780px reading column on an ice-white ground; the live calculator is the single boarded "rink" panel, rounded like rink corners, with a red goal line on top. */
+:root {
+  --ice: #F2F5F8;
+  --board: #FFFFFF;
+  --ink: #132030;
+  --muted: #586779;
+  --line: #D5DDE6;
+  --blue: #1E4F93;
+  --blue-soft: #E2EBF6;
+  --red: #C3282E;
+  --red-soft: #F7E3E3;
+  --display: "Big Shoulders Display", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Libre Franklin", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ice: #0D1520; --board: #142030; --ink: #E5ECF3; --muted: #95A4B6; --line: #26364A;
+    --blue: #7FA9E6; --blue-soft: #1B2D45; --red: #F07373; --red-soft: #3A1E24;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ice: #0D1520; --board: #142030; --ink: #E5ECF3; --muted: #95A4B6; --line: #26364A;
+  --blue: #7FA9E6; --blue-soft: #1B2D45; --red: #F07373; --red-soft: #3A1E24;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--ice); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.6; }
+.wrap { max-width: 780px; margin: 0 auto; padding-inline: 20px; padding-block: 56px 96px; display: grid; gap: 64px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 800; line-height: 1.05; text-wrap: balance; margin: 0; letter-spacing: 0.005em; }
+h1 { font-size: clamp(3rem, 9vw, 4.75rem); text-transform: uppercase; }
+h2 { font-size: 2.1rem; text-transform: uppercase; }
+h3 { font-size: 1.45rem; }
+p { margin: 0; max-width: 65ch; }
+.eyebrow { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.lede { font-size: 1.15rem; color: var(--muted); }
+code, .mono { font-family: var(--mono); font-size: 0.9em; }
+section { display: grid; gap: 20px; }
+.stack { display: grid; gap: 14px; }
+
+/* Hero formula */
+header { display: grid; gap: 20px; }
+.formula { display: grid; gap: 6px; padding-block: 18px; border-top: 2px solid var(--blue); border-bottom: 2px solid var(--blue); font-family: var(--mono); font-size: clamp(0.9rem, 2.6vw, 1.1rem); }
+.formula b { color: var(--red); font-weight: 500; }
+
+/* Rink panel */
+.rink { background: var(--board); border: 1px solid var(--line); border-top: 4px solid var(--red); border-radius: 28px; padding: 28px clamp(18px, 4vw, 32px); display: grid; gap: 28px; }
+.rink-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+.rink-grid > * { min-width: 0; }
+@media (max-width: 640px) { .rink-grid { grid-template-columns: 1fr; } }
+.controls { display: grid; gap: 18px; }
+.ctl { display: grid; gap: 6px; }
+.ctl-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.ctl-head label, .ctl-head .lbl { font-weight: 600; font-size: 0.95rem; }
+.ctl-head output { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--blue); }
+.hint { font-size: 0.8rem; color: var(--muted); }
+input[type="range"] { width: 100%; accent-color: var(--blue); margin: 0; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; gap: 3px; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { padding: 5px 14px; border-radius: 999px; cursor: pointer; font-size: 0.9rem; color: var(--muted); }
+.seg input:checked + label { background: var(--blue); color: var(--board); }
+.seg input:focus-visible + label { outline: 2px solid var(--red); outline-offset: 2px; }
+.presets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.presets button { font: inherit; font-size: 0.85rem; border: 1px solid var(--line); background: var(--ice); color: var(--ink); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+.presets button:hover { border-color: var(--blue); color: var(--blue); }
+.presets button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+
+.readout { display: grid; gap: 14px; align-content: start; }
+.big { font-family: var(--display); font-weight: 800; font-size: clamp(5rem, 16vw, 7.5rem); line-height: 0.85; color: var(--red); font-variant-numeric: tabular-nums; }
+.big small { font-size: 0.45em; }
+.xg-line { font-family: var(--mono); color: var(--muted); font-size: 0.9rem; }
+.xg-line strong { color: var(--ink); font-weight: 500; }
+.dist { display: grid; gap: 7px; }
+.dist-row { display: grid; grid-template-columns: 70px 1fr 52px; gap: 10px; align-items: center; font-size: 0.85rem; }
+.dist-row span:last-child { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+.bar { height: 10px; background: var(--blue-soft); border-radius: 5px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--blue); border-radius: 5px; transition: width 0.2s ease; }
+.dist-row.zero .bar i { background: var(--muted); }
+
+.chart-wrap { overflow-x: auto; }
+svg.chart { width: 100%; min-width: 320px; height: auto; display: block; }
+svg.chart .grid { stroke: var(--line); stroke-width: 1; }
+svg.chart .tick { fill: var(--muted); font-family: var(--mono); font-size: 11px; }
+svg.chart .axis-title { fill: var(--muted); font-family: var(--body); font-size: 12px; }
+svg.chart .curve { stroke: var(--red); stroke-width: 3; fill: none; }
+svg.chart .naive { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 5 5; fill: none; }
+svg.chart .guide { stroke: var(--red); stroke-width: 1; stroke-dasharray: 2 3; }
+svg.chart .dot { fill: var(--red); stroke: var(--board); stroke-width: 3; }
+svg.chart .dot-label { fill: var(--ink); font-family: var(--mono); font-size: 12px; font-weight: 500; }
+.legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 0.8rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.legend i { width: 22px; height: 0; border-top: 3px solid var(--red); }
+.legend i.dash { border-top: 2px dashed var(--muted); }
+
+/* Steps */
+.steps { display: grid; gap: 48px; }
+.step { display: grid; grid-template-columns: 56px 1fr; gap: 18px; }
+.step > div { min-width: 0; display: grid; gap: 14px; }
+.num { font-family: var(--display); font-weight: 800; font-size: 3.4rem; line-height: 0.9; color: var(--blue); }
+@media (max-width: 480px) { .step { grid-template-columns: 1fr; gap: 6px; } }
+.eq { font-family: var(--mono); font-size: 0.92rem; background: var(--board); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; overflow-x: auto; white-space: pre; }
+.mini { background: var(--board); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 14px; }
+.mini-row { display: grid; grid-template-columns: 130px 1fr 72px; gap: 12px; align-items: center; font-size: 0.88rem; }
+.mini-row span:last-child { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 480px) { .mini-row { grid-template-columns: 1fr 64px; } .mini-row .bar { grid-column: 1 / -1; grid-row: 2; } }
+.stats { display: flex; flex-wrap: wrap; gap: 28px; }
+.stat { display: grid; gap: 2px; }
+.stat b { font-family: var(--display); font-size: 2.2rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.stat b.hot { color: var(--red); }
+.stat span { font-size: 0.8rem; color: var(--muted); }
+
+/* Tables and lists */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--board); }
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+td.v { font-family: var(--mono); white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--blue); }
+.flags { display: grid; gap: 12px; padding: 0; margin: 0; list-style: none; }
+.flags li { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; }
+.chip { font-family: var(--mono); font-size: 0.75rem; padding: 3px 10px; border-radius: 999px; background: var(--red-soft); color: var(--red); white-space: nowrap; }
+.chip.info { background: var(--blue-soft); color: var(--blue); }
+@media (max-width: 480px) { .flags li { grid-template-columns: 1fr; gap: 4px; } .flags .chip { justify-self: start; } }
+ul.plain { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; max-width: 65ch; }
+footer { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); padding-top: 20px; }
+
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Tims Hockey Challenge · tims.py</div>
+  <h1>Who scores tonight</h1>
+  <p class="lede">How the picker turns a list of names into a ranked chance of scoring. It estimates how many goals each player should score tonight, then converts that into the odds of at least one.</p>
+  <div class="formula">
+    <div><b>xG</b> = shots per game × shooting % × opponent defence × home/away</div>
+    <div><b>P(goal)</b> = 1 − e<sup>−xG</sup></div>
+  </div>
+</header>
+
+<section aria-labelledby="try">
+  <h2 id="try">Try it</h2>
+  <div class="rink">
+    <div class="rink-grid">
+      <div class="controls">
+        <div class="presets" aria-label="Load a player from the Oct 15, 2026 run">
+          <span class="hint">Load from Oct 15 run:</span>
+          <button type="button" data-p="3.72,14.2,1.13,away">Kyle Connor</button>
+          <button type="button" data-p="3.75,12.3,1.08,home">Auston Matthews</button>
+          <button type="button" data-p="3.21,14.3,0.94,home">Connor McDavid</button>
+          <button type="button" data-p="2.73,7.8,1.02,away">Rasmus Dahlin</button>
+        </div>
+        <div class="ctl">
+          <div class="ctl-head"><label for="shots">Shots per game</label><output id="shotsOut" for="shots"></output></div>
+          <input type="range" id="shots" min="0.5" max="5" step="0.01" value="3.72">
+          <span class="hint">Top snipers: 3.5–4.5 · Average forward: about 2</span>
+        </div>
+        <div class="ctl">
+          <div class="ctl-head"><label for="sh">Shooting %</label><output id="shOut" for="sh"></output></div>
+          <input type="range" id="sh" min="2" max="20" step="0.1" value="14.2">
+          <span class="hint">Forward average 10.5% · Defence average 4.5%</span>
+        </div>
+        <div class="ctl">
+          <div class="ctl-head"><label for="opp">Opponent defence (OppD)</label><output id="oppOut" for="opp"></output></div>
+          <input type="range" id="opp" min="0.8" max="1.25" step="0.01" value="1.13">
+          <span class="hint">1.00 = league average · above 1 = leaky defence</span>
+        </div>
+        <div class="ctl">
+          <div class="ctl-head"><span class="lbl" id="venueLbl">Venue</span><output id="venueOut"></output></div>
+          <div class="seg" role="radiogroup" aria-labelledby="venueLbl">
+            <input type="radio" name="venue" id="home" value="home"><label for="home">Home</label>
+            <input type="radio" name="venue" id="away" value="away" checked><label for="away">Away</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="readout" aria-live="polite">
+        <div class="eyebrow">Chance to score</div>
+        <div class="big"><span id="pct">44</span><small>%</small></div>
+        <div class="xg-line">xG <strong id="xg">0.58</strong> expected goals</div>
+        <div class="dist" id="dist"></div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="chart-wrap">
+        <svg class="chart" id="curve" viewBox="0 0 640 290" role="img" aria-label="Chance of scoring plotted against expected goals"></svg>
+      </div>
+      <div class="legend">
+        <span><i></i>P(goal) = 1 − e<sup>−xG</sup></span>
+        <span><i class="dash"></i>Treating xG itself as the chance (overstates it)</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="steps">
+  <h2 id="steps">The five steps</h2>
+  <div class="steps">
+
+    <div class="step">
+      <div class="num">1</div>
+      <div>
+        <h3>Shot volume</h3>
+        <p>Shooting is the most stable skill in hockey, so the model starts with how often a player shoots. It blends three seasons, counting each game from this season fully and older games less.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Season</th><th>Weight per game</th></tr></thead>
+          <tbody>
+            <tr><td>This season</td><td class="v">1.0</td></tr>
+            <tr><td>Last season</td><td class="v">0.6</td></tr>
+            <tr><td>Two seasons ago</td><td class="v">0.3</td></tr>
+          </tbody>
+        </table></div>
+        <div class="mini">
+          <div class="ctl">
+            <div class="ctl-head"><label for="gp">Games played this season</label><output id="gpOut" for="gp"></output></div>
+            <input type="range" id="gp" min="0" max="82" step="1" value="7">
+            <span class="hint">Share of the shot rate each season provides (assumes full 82-game past seasons)</span>
+          </div>
+          <div id="seasonBars" class="stack"></div>
+        </div>
+        <p>In mid-October a player has about 7 games this season against 49 weighted games from last year, so a hot or cold first week barely moves him. By spring this season dominates.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">2</div>
+      <div>
+        <h3>Recent form</h3>
+        <p>Players get promoted to the top line or the power play mid-season. To catch that, the shot rate from the last 10 games gets up to 30% of the say. With fewer than 10 games played it gets proportionally less.</p>
+        <div class="eq">w = 0.30 × (games in sample ÷ 10)
+shots per game = long-run × (1 − w) + last 10 × w</div>
+        <p>Only shots are used here, not goals. A run of goals on a few shots is mostly luck. A jump in shots usually means a real change in ice time.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">3</div>
+      <div>
+        <h3>Finishing</h3>
+        <p>A raw shooting % from a small sample is unreliable. The model adds 100 shots at the average rate for the player's position before dividing. Small samples get pulled hard toward average. Veterans with 1,000+ shots keep nearly their own rate.</p>
+        <div class="eq">Sh% = (goals + average × 100) ÷ (shots + 100)
+average = 10.5% forwards, 4.5% defence</div>
+        <div class="mini">
+          <div class="ctl">
+            <div class="ctl-head"><label for="g">Goals</label><output id="gOut" for="g"></output></div>
+            <input type="range" id="g" min="0" max="80" step="1" value="5">
+          </div>
+          <div class="ctl">
+            <div class="ctl-head"><label for="s">Shots</label><output id="sOut" for="s"></output></div>
+            <input type="range" id="s" min="1" max="500" step="1" value="10">
+          </div>
+          <div class="seg" role="radiogroup" aria-label="Position">
+            <input type="radio" name="pos" id="posF" value="F" checked><label for="posF">Forward</label>
+            <input type="radio" name="pos" id="posD" value="D"><label for="posD">Defence</label>
+          </div>
+          <div class="stats">
+            <div class="stat"><b id="rawSh">50.0%</b><span>Raw shooting %</span></div>
+            <div class="stat"><b id="regSh" class="hot">13.6%</b><span>What the model uses</span></div>
+            <div class="stat"><b id="trust">9%</b><span>Weight on his own record</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">4</div>
+      <div>
+        <h3>Matchup</h3>
+        <p>Opponent defence (OppD) compares the goals tonight's opponent allows per game with the league average. Early in the season, 10 games of league-average results are mixed in so one blowout doesn't make a team look terrible. The result is kept between 0.80 and 1.25.</p>
+        <div class="eq">OppD = ((goals allowed + avg × 10) ÷ (games + 10)) ÷ avg
+home ×1.03 · away ×0.97</div>
+        <p>Example: a team that has allowed 31 goals in 8 games gives up 3.88 a game, 1.23 times the league's 3.14. After mixing in the 10 average games, OppD is <span class="mono">1.10</span>. That's still a boost, but it no longer takes a rough first week at face value.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">5</div>
+      <div>
+        <h3>Probability</h3>
+        <p>Multiplying the pieces gives xG, the goals a player should average in a game like tonight's. Goals arrive at random at roughly a steady rate, which is a Poisson process. Under that model the chance of scoring zero is e<sup>−xG</sup>, so the chance of at least one is:</p>
+        <div class="eq">P(goal) = 1 − e^(−xG)</div>
+        <p>That's why 0.58 xG becomes 44%, not 58%. Some of those expected goals come in nights where the player scores twice, and a two-goal night still only wins you one pick.</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section aria-labelledby="flags">
+  <h2 id="flags">Warnings it prints</h2>
+  <ul class="flags">
+    <li><span class="chip">missed games</span><p>The player sat out his team's last 2 or more games, so he's probably injured or a healthy scratch. He's moved to the bottom of the group.</p></li>
+    <li><span class="chip">not playing</span><p>His team has no game on that date. Chance is set to 0%.</p></li>
+    <li><span class="chip info">ambiguous name</span><p>More than one active player has that name (two Elias Petterssons play for Vancouver). It picks the forward. Add a team like <code>(VAN)</code> to be sure.</p></li>
+    <li><span class="chip info">closest match</span><p>The name didn't match exactly, so it used the nearest search result. Check that it's the right player.</p></li>
+  </ul>
+</section>
+
+<section aria-labelledby="limits">
+  <h2 id="limits">What it can't see</h2>
+  <ul class="plain">
+    <li><strong>Tonight's goalie.</strong> Starters are confirmed close to game time, and a backup in net helps shooters noticeably.</li>
+    <li><strong>Same-day news.</strong> Morning-skate injuries and line changes aren't in the data yet.</li>
+    <li><strong>Linemates and power-play time.</strong> These show up only indirectly, through shot volume.</li>
+    <li><strong>Betting odds.</strong> Sportsbook "anytime goal scorer" lines bundle all of the above and are the best single check on the model.</li>
+  </ul>
+</section>
+
+<section aria-labelledby="knobs">
+  <h2 id="knobs">Tuning knobs</h2>
+  <p>All of these are constants at the top of <code>tims.py</code>.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Constant</th><th>Value</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>SEASON_WEIGHTS</code></td><td class="v">1.0, 0.6, 0.3</td><td>Per-game weight of this season, last season, two seasons ago</td></tr>
+      <tr><td><code>PRIOR_SH_PCT</code></td><td class="v">F 10.5%, D 4.5%</td><td>Average shooting % that small samples are pulled toward</td></tr>
+      <tr><td><code>PRIOR_SHOTS</code></td><td class="v">100</td><td>How many average shots are blended in</td></tr>
+      <tr><td><code>FALLBACK_SHOTS_PG</code></td><td class="v">F 1.4, D 1.0</td><td>Shot rate for players with no NHL history</td></tr>
+      <tr><td><code>RECENT_GAMES</code></td><td class="v">10</td><td>Games in the recent-form window</td></tr>
+      <tr><td><code>RECENT_WEIGHT</code></td><td class="v">0.30</td><td>Most weight recent form can get</td></tr>
+      <tr><td><code>OPP_PRIOR_GAMES</code></td><td class="v">10</td><td>Average games mixed into each opponent's defence</td></tr>
+      <tr><td><code>OPP_FACTOR_RANGE</code></td><td class="v">0.80 – 1.25</td><td>Limits on opponent defence</td></tr>
+      <tr><td><code>HOME_FACTOR</code> / <code>AWAY_FACTOR</code></td><td class="v">1.03 / 0.97</td><td>Home-ice adjustment</td></tr>
+      <tr><td><code>MISSED_GAMES_WARNING</code></td><td class="v">2</td><td>Straight missed team games before a player is flagged</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<footer>Data from the NHL's public stats API. Example players use numbers from the October 15, 2026 run. The model gives an edge, not a guarantee: even the top pick usually doesn't score.</footer>
+
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const fmtPct = (p, d = 1) => (p * 100).toFixed(d) + "%";
+
+  // ---- Main calculator ----
+  const shots = $("shots"), sh = $("sh"), opp = $("opp");
+  function venue() { return document.querySelector('input[name="venue"]:checked').value; }
+
+  function poisson(k, l) { let f = 1; for (let i = 2; i <= k; i++) f *= i; return Math.exp(-l) * Math.pow(l, k) / f; }
+
+  function renderCalc() {
+    const s = +shots.value, p = +sh.value / 100, o = +opp.value;
+    const v = venue() === "home" ? 1.03 : 0.97;
+    const xg = s * p * o * v;
+    const prob = 1 - Math.exp(-xg);
+    $("shotsOut").textContent = s.toFixed(2);
+    $("shOut").textContent = (+sh.value).toFixed(1) + "%";
+    $("oppOut").textContent = o.toFixed(2) + "×";
+    $("venueOut").textContent = "×" + v.toFixed(2);
+    $("pct").textContent = (prob * 100).toFixed(0);
+    $("xg").textContent = xg.toFixed(2);
+
+    const p0 = poisson(0, xg), p1 = poisson(1, xg), p2 = poisson(2, xg);
+    const rows = [["No goal", p0, true], ["1 goal", p1], ["2 goals", p2], ["3 or more", Math.max(0, 1 - p0 - p1 - p2)]];
+    $("dist").innerHTML = rows.map(([label, val, zero]) =>
+      `<div class="dist-row${zero ? " zero" : ""}"><span>${label}</span><div class="bar"><i style="width:${(val * 100).toFixed(1)}%"></i></div><span>${fmtPct(val)}</span></div>`
+    ).join("");
+    renderCurve(xg, prob);
+  }
+
+  // ---- Curve chart ----
+  const W = 640, H = 290, L = 52, R = 20, T = 18, B = 46;
+  const X_MAX = 1.2, Y_MAX = 0.8;
+  const sx = (x) => L + (x / X_MAX) * (W - L - R);
+  const sy = (y) => T + (1 - y / Y_MAX) * (H - T - B);
+
+  function renderCurve(xg, prob) {
+    let g = "";
+    for (let y = 0; y <= Y_MAX + 1e-9; y += 0.2) {
+      g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${sy(y)}" y2="${sy(y)}"/>`;
+      g += `<text class="tick" x="${L - 8}" y="${sy(y) + 4}" text-anchor="end">${Math.round(y * 100)}%</text>`;
+    }
+    for (let x = 0; x <= X_MAX + 1e-9; x += 0.2) {
+      g += `<text class="tick" x="${sx(x)}" y="${H - B + 18}" text-anchor="middle">${x.toFixed(1)}</text>`;
+    }
+    g += `<text class="axis-title" x="${(L + W - R) / 2}" y="${H - 6}" text-anchor="middle">Expected goals tonight (xG)</text>`;
+    g += `<line class="naive" x1="${sx(0)}" y1="${sy(0)}" x2="${sx(Y_MAX)}" y2="${sy(Y_MAX)}"/>`;
+    let d = "";
+    for (let i = 0; i <= 80; i++) {
+      const x = (X_MAX * i) / 80;
+      d += (i ? "L" : "M") + sx(x).toFixed(1) + " " + sy(1 - Math.exp(-x)).toFixed(1);
+    }
+    g += `<path class="curve" d="${d}"/>`;
+    const cx = sx(Math.min(xg, X_MAX)), cy = sy(Math.min(prob, Y_MAX));
+    g += `<line class="guide" x1="${cx}" x2="${cx}" y1="${cy}" y2="${sy(0)}"/>`;
+    g += `<line class="guide" x1="${L}" x2="${cx}" y1="${cy}" y2="${cy}"/>`;
+    g += `<circle class="dot" cx="${cx}" cy="${cy}" r="7"/>`;
+    const right = cx > W - 170;
+    g += `<text class="dot-label" x="${right ? cx - 14 : cx + 14}" y="${cy + 20}" text-anchor="${right ? "end" : "start"}">xG ${xg.toFixed(2)} → ${(prob * 100).toFixed(0)}%</text>`;
+    $("curve").innerHTML = g;
+  }
+
+  [shots, sh, opp].forEach((el) => el.addEventListener("input", renderCalc));
+  document.querySelectorAll('input[name="venue"]').forEach((el) => el.addEventListener("change", renderCalc));
+  document.querySelectorAll(".presets button").forEach((btn) => btn.addEventListener("click", () => {
+    const [s, p, o, v] = btn.dataset.p.split(",");
+    shots.value = s; sh.value = p; opp.value = o;
+    $(v).checked = true;
+    renderCalc();
+  }));
+
+  // ---- Step 1: season weighting ----
+  function renderSeasons() {
+    const gp = +$("gp").value;
+    $("gpOut").textContent = gp;
+    const eff = [["This season", gp * 1.0], ["Last season", 82 * 0.6], ["Two seasons ago", 82 * 0.3]];
+    const total = eff.reduce((a, [, e]) => a + e, 0);
+    $("seasonBars").innerHTML = eff.map(([label, e]) =>
+      `<div class="mini-row"><span>${label}</span><div class="bar"><i style="width:${(e / total * 100).toFixed(1)}%"></i></div><span>${(e / total * 100).toFixed(0)}%</span></div>`
+    ).join("");
+  }
+  $("gp").addEventListener("input", renderSeasons);
+
+  // ---- Step 3: shooting % regression ----
+  function renderSh() {
+    const g = +$("g").value;
+    let s = +$("s").value;
+    if (g > s) { s = g; $("s").value = s; }
+    const prior = document.querySelector('input[name="pos"]:checked').value === "D" ? 0.045 : 0.105;
+    $("gOut").textContent = g;
+    $("sOut").textContent = s;
+    $("rawSh").textContent = fmtPct(g / s);
+    $("regSh").textContent = fmtPct((g + prior * 100) / (s + 100));
+    $("trust").textContent = Math.round(s / (s + 100) * 100) + "%";
+  }
+  ["g", "s"].forEach((id) => $(id).addEventListener("input", renderSh));
+  document.querySelectorAll('input[name="pos"]').forEach((el) => el.addEventListener("change", renderSh));
+
+  renderCalc();
+  renderSeasons();
+  renderSh();
+})();
+</script>

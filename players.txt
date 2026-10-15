@@ -1,0 +1,33 @@
+# Paste the Tims lists here. Group headers are optional;
+# with them, the script recommends the best pick from each group.
+# Add a team in brackets if a name is ambiguous, e.g. Elias Pettersson (VAN)
+
+Group 1
+Cole Perfetti
+Kirill Marchenko
+Jack Eichel
+Leon Draisaitl
+Tomas Hertl
+Carter Verhaeghe
+Dylan Larkin
+Matt Boldy
+Connor McDavid
+William Nylander
+Kyle Connor
+
+
+Group 2
+Tage Thompson
+Kirill Kaprizov
+Brady Tkachuk
+Macklin Celebrini
+Sam Reinhart
+Dylan Larkin
+
+Group 3
+Rasmus Dahlin
+Quinn Hughes
+Morgan Rielly
+Zach Werenski
+Elias Pettersson (VAN)
+Moritz Seider
