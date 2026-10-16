@@ -36,7 +36,7 @@ jobs:
           python-version: "3.12"
 
       - name: Rank everyone playing today
-        run: python tims.py --top 25 --json site/data.json
+        run: python tims.py --top 25 --json site/data.json --history history.csv
 
       # Committing the data keeps a daily history and keeps the repo "active",
       # which stops GitHub from switching off the schedule after 60 quiet days.
@@ -44,7 +44,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add site/data.json
+          git add site/data.json history.csv
           if ! git diff --cached --quiet; then
             git commit -m "Update picks for $(date +%F)"
             git pull --rebase

@@ -23,6 +23,7 @@ Data comes from the NHL's public API (api-web.nhle.com). Only the standard libra
 """
 
 import argparse
+import csv
 import datetime as dt
 import json
 import math
@@ -50,6 +51,9 @@ OPP_PRIOR_GAMES = 10                     # shrink opponent GA/GP toward league a
 OPP_FACTOR_RANGE = (0.8, 1.25)
 HOME_FACTOR, AWAY_FACTOR = 1.03, 0.97
 MISSED_GAMES_WARNING = 2                 # flag players who sat out this many straight team games
+HISTORY_TOP = 50                         # how many of each day's picks to keep in the history CSV
+HISTORY_FIELDS = ["date", "rank", "player_id", "name", "pos", "team", "opp", "gp", "goals", "shots_pg",
+                  "sh_pct", "l10", "opp_factor", "xg", "prob", "flagged", "scored"]
 
 
 def get_json(url, retries=3):
@@ -190,7 +194,7 @@ def analyze(name, team_hint, ctx, pid=None):
         row["name"] = f"{landing['firstName']['default']} {landing['lastName']['default']}"
         team = landing.get("currentTeamAbbrev") or match.get("teamAbbrev") or "?"
         pos = "D" if landing.get("position") == "D" else "F"
-        row.update(team=team, pos=landing.get("position", "?"))
+        row.update(id=pid, team=team, pos=landing.get("position", "?"))
 
         season = ctx["season"]
         # Weighted multi-season shot rate and finishing.
@@ -272,7 +276,7 @@ def write_json(path, date, games, league_avg, ranked_groups):
     """Save the rankings for the website (site/index.html reads this file)."""
     def player(rank, r):
         return {
-            "rank": rank, "name": r["name"], "pos": r["pos"], "team": r["team"], "opp": r.get("opp"),
+            "rank": rank, "id": r.get("id"), "name": r["name"], "pos": r["pos"], "team": r["team"], "opp": r.get("opp"),
             "gp": r.get("gp"), "goals": r.get("goals"),
             "shots_pg": round(r["shots_pg"], 2) if "shots_pg" in r else None,
             "sh_pct": round(r["sh_pct"], 4) if "sh_pct" in r else None,
@@ -299,6 +303,41 @@ def write_json(path, date, games, league_avg, ranked_groups):
         json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
 
 
+def record_history(json_path, csv_path, today):
+    """Append the last saved day's top picks to the history CSV, with whether each one scored.
+    Call before data.json is overwritten. Skips days already recorded or with games still to finish."""
+    try:
+        with open(json_path, encoding="utf-8") as f:
+            day = json.load(f)
+    except FileNotFoundError:
+        return
+    date = day["date"]
+    if date >= today or not day["groups"]:
+        return
+    exists = os.path.exists(csv_path)
+    if exists:
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            if any(r["date"] == date for r in csv.DictReader(f)):
+                return
+    games = get_json(f"{API}/score/{date}").get("games", [])
+    if any(g.get("gameScheduleState") == "OK" and g.get("gameState") not in ("OFF", "FINAL") for g in games):
+        print(f"History: {date} games not final yet; will record on a later run.")
+        return
+    # Shootout goals don't count as goals.
+    goals = [g for game in games for g in game.get("goals", []) if g["periodDescriptor"]["periodType"] != "SO"]
+    ids = {g["playerId"] for g in goals}
+    names = {normalize(f"{g['firstName']['default']} {g['lastName']['default']}") for g in goals}
+    with open(csv_path, "a", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, HISTORY_FIELDS, extrasaction="ignore")
+        if not exists:
+            w.writeheader()
+        for p in day["groups"][0]["players"][:HISTORY_TOP]:
+            # Older data.json files have no player ids, so fall back to the name.
+            scored = p["id"] in ids if p.get("id") else normalize(p["name"]) in names
+            w.writerow({**p, "date": date, "player_id": p.get("id"), "scored": int(scored)})
+    print(f"History: recorded top {HISTORY_TOP} picks for {date} in {csv_path}.")
+
+
 def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -308,7 +347,15 @@ def main():
     ap.add_argument("--date", default=dt.date.today().isoformat(), help="game date, YYYY-MM-DD (default: today)")
     ap.add_argument("--top", type=int, help="only show the top N players in each group")
     ap.add_argument("--json", metavar="PATH", help="also save the full rankings as JSON (used by the website)")
+    ap.add_argument("--history", metavar="CSV",
+                    help="before overwriting --json, append its day's top picks and whether they scored to CSV")
     args = ap.parse_args()
+
+    if args.history and args.json:
+        try:
+            record_history(args.json, args.history, args.date)
+        except Exception as e:  # never let history break the day's picks
+            print(f"History: failed ({e})")
 
     games, season = load_schedule(args.date)
     if not games:
