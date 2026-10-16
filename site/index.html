@@ -42,6 +42,10 @@ body { margin: 0; background: var(--ice); color: var(--ink); font-family: var(--
 .wrap { max-width: 760px; margin: 0 auto; padding-inline: 16px; padding-block: max(24px, env(safe-area-inset-top)) max(48px, env(safe-area-inset-bottom)); display: grid; gap: 18px; }
 h1 { font-family: var(--display); font-weight: 800; font-size: clamp(2.4rem, 9vw, 3.4rem); line-height: 0.95; text-transform: uppercase; margin: 0; text-wrap: balance; }
 header { display: grid; gap: 6px; }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
+.histbtn { flex: none; font-weight: 600; font-size: 0.9rem; padding: 10px 16px; border-radius: 999px; background: var(--blue); color: var(--board); text-decoration: none; }
+.histbtn:hover { filter: brightness(1.1); }
+.histbtn:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
 .sub { color: var(--muted); font-size: 0.9rem; display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .sub b { color: var(--ink); font-weight: 600; }
 
@@ -94,7 +98,7 @@ footer code { font-family: var(--mono); }
 <body>
 <div class="wrap">
   <header>
-    <h1>Who scores tonight</h1>
+    <div class="top"><h1>Who scores tonight</h1><a class="histbtn" href="history.html">Past picks &amp; results →</a></div>
     <div class="sub" id="sub"><span>Loading today's rankings…</span></div>
   </header>
 
@@ -122,7 +126,6 @@ footer code { font-family: var(--mono); }
 
   <footer>
     <span>Chance to score = 1 − e<sup>−xG</sup>, where xG blends shot rate, shooting %, opponent defence and home ice. Stats from the NHL's public API.</span>
-    <span><a href="history.html" style="color:var(--blue)">Past picks and results →</a></span>
     <span>Row stats: xG · shots per game · shooting % · last 10 games · opponent defence (1.00 = league average). Rank is overall, so it stays the same when you filter.</span>
   </footer>
 </div>
