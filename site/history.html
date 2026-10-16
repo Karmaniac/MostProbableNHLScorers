@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Past Picks</title>
+<meta name="description" content="Each day's top 50 picks, the stats behind them, and who actually scored.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Libre+Franklin:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: same 760px column as index.html. Summary tiles, a predicted-vs-actual table, then one day's picks as a table. */
+:root {
+  --ice: #F2F5F8;
+  --board: #FFFFFF;
+  --ink: #132030;
+  --muted: #586779;
+  --line: #D5DDE6;
+  --blue: #1E4F93;
+  --blue-soft: #E2EBF6;
+  --red: #C3282E;
+  --red-soft: #F7E3E3;
+  --green: #1F7A45;
+  --green-soft: #DFF1E6;
+  --display: "Big Shoulders Display", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Libre Franklin", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ice: #0D1520; --board: #142030; --ink: #E5ECF3; --muted: #95A4B6; --line: #26364A;
+    --blue: #7FA9E6; --blue-soft: #1B2D45; --red: #F07373; --red-soft: #3A1E24;
+    --green: #6FCF97; --green-soft: #173326;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--ice); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 760px; margin: 0 auto; padding-inline: 16px; padding-block: max(24px, env(safe-area-inset-top)) max(48px, env(safe-area-inset-bottom)); display: grid; gap: 18px; }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(2.4rem, 9vw, 3.4rem); line-height: 0.95; text-transform: uppercase; margin: 0; }
+h2 { font-family: var(--display); font-weight: 700; font-size: 1.4rem; text-transform: uppercase; margin: 0; }
+header { display: grid; gap: 6px; }
+.sub { color: var(--muted); font-size: 0.9rem; }
+a { color: var(--blue); }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.tile { background: var(--board); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; display: grid; gap: 2px; }
+.tile b { font-family: var(--display); font-weight: 800; font-size: 2rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.tile span { font-size: 0.8rem; color: var(--muted); }
+
+.panel { background: var(--board); border: 1px solid var(--line); border-radius: 16px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+th, td { padding: 8px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; background: var(--board); position: sticky; top: 0; }
+tr:last-child td { border-bottom: 0; }
+td.l, th.l { text-align: left; }
+td.mono { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+td.name { font-weight: 600; }
+tr.yes td { background: var(--green-soft); }
+.hit { font-weight: 600; color: var(--green); }
+.miss { color: var(--muted); }
+.cmp { display: grid; gap: 3px; min-width: 120px; }
+.cmp i { display: block; height: 6px; border-radius: 3px; }
+.cmp .p { background: var(--blue); }
+.cmp .a { background: var(--green); }
+.legend { font-size: 0.8rem; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+
+.bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); }
+select { font: inherit; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--board); color: var(--ink); }
+select:focus-visible { outline: 2px solid var(--blue); }
+.empty { padding: 36px 20px; text-align: center; color: var(--muted); background: var(--board); border: 1px solid var(--line); border-radius: 16px; }
+.stack { display: grid; gap: 18px; }
+.stack.tight { gap: 8px; }
+[hidden] { display: none !important; }
+footer { font-size: 0.8rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Past picks</h1>
+    <div class="sub">Each day's top 50 picks and who actually scored. Results are added the next morning. <a href="./">← Tonight's picks</a></div>
+  </header>
+
+  <div class="empty" id="empty" hidden></div>
+
+  <div id="main" class="stack" hidden>
+    <div class="tiles" id="tiles"></div>
+
+    <section class="stack tight">
+      <h2>Predicted vs actual</h2>
+      <div class="legend"><span><i style="background:var(--blue)"></i>Average predicted chance</span><span><i style="background:var(--green)"></i>Share who scored</span></div>
+      <div class="panel"><table id="calib"></table></div>
+    </section>
+
+    <section class="stack tight">
+      <h2>By day</h2>
+      <div class="bar"><select id="day" aria-label="Choose a day"></select><span id="daySum"></span></div>
+      <div class="panel"><table id="picks"></table></div>
+    </section>
+  </div>
+
+  <footer>Data: <a href="history.csv">history.csv</a>. Shootout goals don't count.</footer>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const pct = (x) => `${(x * 100).toFixed(0)}%`;
+  const fmtDate = (iso) => new Date(iso + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+
+  // Quote-aware CSV parse (Python's csv module quotes fields that contain commas).
+  function parseCSV(text) {
+    const rows = [];
+    let row = [], f = "", q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) {
+        if (c === '"' && text[i + 1] === '"') { f += '"'; i++; }
+        else if (c === '"') q = false;
+        else f += c;
+      } else if (c === '"') q = true;
+      else if (c === ",") { row.push(f); f = ""; }
+      else if (c === "\n" || c === "\r") {
+        if (c === "\r" && text[i + 1] === "\n") i++;
+        row.push(f); f = ""; rows.push(row); row = [];
+      } else f += c;
+    }
+    if (f || row.length) { row.push(f); rows.push(row); }
+    const [head, ...body] = rows.filter((r) => r.some(Boolean));
+    return body.map((r) => Object.fromEntries(head.map((h, i) => [h, r[i]])));
+  }
+
+  function stats(rows) {
+    const n = rows.length, hits = rows.filter((r) => r.scored).length;
+    return { n, hits, rate: n ? hits / n : 0, pred: n ? rows.reduce((s, r) => s + r.prob, 0) / n : 0 };
+  }
+
+  function render(rows) {
+    const days = [...new Set(rows.map((r) => r.date))].sort().reverse();
+    const all = stats(rows), top10 = stats(rows.filter((r) => r.rank <= 10)), first = stats(rows.filter((r) => r.rank === 1));
+    $("tiles").innerHTML = [
+      [days.length, "days tracked"],
+      [`${all.hits}/${all.n}`, `top-50 picks scored (${pct(all.rate)})`],
+      [pct(top10.rate), `top 10 scored (predicted ${pct(top10.pred)})`],
+      [`${first.hits}/${first.n}`, "#1 pick scored"],
+    ].map(([v, l]) => `<div class="tile"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
+
+    const buckets = [[0, 0.2, "Under 20%"], [0.2, 0.3, "20–30%"], [0.3, 0.4, "30–40%"], [0.4, 1.01, "40%+"]];
+    const max = Math.max(0.5, ...buckets.map(([lo, hi]) => stats(rows.filter((r) => r.prob >= lo && r.prob < hi)).rate));
+    $("calib").innerHTML = `<tr><th class="l">Predicted</th><th>Picks</th><th>Scored</th><th>Avg predicted</th><th>Actual</th><th class="l"></th></tr>` +
+      buckets.map(([lo, hi, label]) => {
+        const s = stats(rows.filter((r) => r.prob >= lo && r.prob < hi));
+        if (!s.n) return "";
+        return `<tr><td class="l">${label}</td><td>${s.n}</td><td>${s.hits}</td><td>${pct(s.pred)}</td><td>${pct(s.rate)}</td>
+          <td class="l"><div class="cmp"><i class="p" style="width:${(s.pred / max * 100).toFixed(1)}%"></i><i class="a" style="width:${(s.rate / max * 100).toFixed(1)}%"></i></div></td></tr>`;
+      }).join("");
+
+    $("day").innerHTML = days.map((d) => `<option value="${d}">${esc(fmtDate(d))}</option>`).join("");
+    const showDay = () => {
+      const day = rows.filter((r) => r.date === $("day").value).sort((a, b) => a.rank - b.rank);
+      const s = stats(day);
+      $("daySum").textContent = `${s.hits} of ${s.n} scored · expected ${(s.pred * s.n).toFixed(1)}`;
+      $("picks").innerHTML = `<tr><th>#</th><th class="l">Player</th><th class="l">Team</th><th class="l">Opp</th><th>S/GP</th><th>Sh%</th><th class="l">L10</th><th>OppD</th><th>xG</th><th>Chance</th><th>Scored</th></tr>` +
+        day.map((r) => `<tr class="${r.scored ? "yes" : ""}">
+          <td>${r.rank}</td><td class="l name">${esc(r.name)}${r.flagged ? " ⚠" : ""}</td><td class="l">${esc(r.team)}</td><td class="l">${esc(r.opp)}</td>
+          <td>${r.shots_pg.toFixed(2)}</td><td>${(r.sh_pct * 100).toFixed(1)}</td><td class="l mono">${esc(r.l10.replace(" in ", "/"))}</td>
+          <td>${r.opp_factor.toFixed(2)}</td><td>${r.xg.toFixed(2)}</td><td>${pct(r.prob)}</td>
+          <td>${r.scored ? '<span class="hit">✓ Goal</span>' : '<span class="miss">–</span>'}</td></tr>`).join("");
+    };
+    $("day").addEventListener("change", showDay);
+    showDay();
+    $("main").hidden = false;
+  }
+
+  fetch("history.csv", { cache: "no-store" })
+    .then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); })
+    .then((text) => {
+      const num = ["rank", "shots_pg", "sh_pct", "opp_factor", "xg", "prob"];
+      const rows = parseCSV(text).map((r) => {
+        num.forEach((k) => { r[k] = parseFloat(r[k]) || 0; });
+        return { ...r, l10: r.l10 || "", flagged: r.flagged === "True", scored: r.scored === "1" };
+      });
+      if (!rows.length) throw new Error("empty");
+      render(rows);
+    })
+    .catch(() => {
+      $("empty").textContent = "No results yet. The first day's picks are added the morning after.";
+      $("empty").hidden = false;
+    });
+})();
+</script>
+</body>
+</html>
