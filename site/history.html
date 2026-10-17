@@ -3,87 +3,94 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1B2522">
 <title>Past Picks</title>
 <meta name="description" content="Each day's top 50 picks, the stats behind them, and who actually scored.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Libre+Franklin:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap">
 <style>
-/* Layout: same 760px column as index.html. Summary tiles, a predicted-vs-actual table, then one day's picks as a table. */
+/* Same "Scoreboard" look as index.html. Summary tiles, a predicted-vs-actual table, then one day's picks as a table. */
 :root {
-  --ice: #F2F5F8;
-  --board: #FFFFFF;
-  --ink: #132030;
-  --muted: #586779;
-  --line: #D5DDE6;
-  --blue: #1E4F93;
-  --blue-soft: #E2EBF6;
-  --red: #C3282E;
-  --red-soft: #F7E3E3;
-  --green: #1F7A45;
-  --green-soft: #DFF1E6;
-  --display: "Big Shoulders Display", "Arial Narrow", "Roboto Condensed", sans-serif;
-  --body: "Libre Franklin", "Segoe UI", system-ui, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ice: #0D1520; --board: #142030; --ink: #E5ECF3; --muted: #95A4B6; --line: #26364A;
-    --blue: #7FA9E6; --blue-soft: #1B2D45; --red: #F07373; --red-soft: #3A1E24;
-    --green: #6FCF97; --green-soft: #173326;
-    color-scheme: dark;
-  }
+  --bg: #1B2522;
+  --panel: #26332F;
+  --line: #40534D;
+  --cream: #FDF1DB;
+  --khaki: #CFC49D;
+  --muted: #B9B394;
+  --sage: #96AB88;
+  --clay: #D89684;
+  --clay-hi: #E3A592;
+  --clay-soft: #46453E;
+  --display: "Chakra Petch", "Arial Narrow", sans-serif;
+  --body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
-body { margin: 0; background: var(--ice); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
-.wrap { max-width: 760px; margin: 0 auto; padding-inline: 16px; padding-block: max(24px, env(safe-area-inset-top)) max(48px, env(safe-area-inset-bottom)); display: grid; gap: 18px; }
-h1 { font-family: var(--display); font-weight: 800; font-size: clamp(2.4rem, 9vw, 3.4rem); line-height: 0.95; text-transform: uppercase; margin: 0; }
-h2 { font-family: var(--display); font-weight: 700; font-size: 1.4rem; text-transform: uppercase; margin: 0; }
-header { display: grid; gap: 6px; }
-.sub { color: var(--muted); font-size: 0.9rem; }
-a { color: var(--blue); }
+body { margin: 0; background: var(--bg); color: var(--cream); font-family: var(--body); font-size: 15px; line-height: 1.45; }
+:focus-visible { outline: 2px solid var(--clay-hi); outline-offset: 2px; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right)); padding-block: max(20px, env(safe-area-inset-top)) max(48px, env(safe-area-inset-bottom)); display: grid; gap: 20px; }
+a { color: var(--clay-hi); }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand svg { flex: none; }
+.brand span { font-family: var(--display); font-weight: 700; font-size: clamp(20px, 5.5vw, 26px); line-height: 1; letter-spacing: 0.04em; text-transform: uppercase; }
+nav { display: flex; gap: 6px; }
+nav a { min-height: 40px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 6px; border: 1px solid var(--line); color: var(--cream); text-decoration: none; font-weight: 600; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; }
+nav a:hover { background: var(--panel); }
+nav a[aria-current="page"] { background: var(--sage); border-color: var(--sage); color: var(--bg); font-weight: 700; }
+header.intro { display: grid; gap: 6px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(34px, 8vw, 56px); line-height: 0.95; text-transform: uppercase; margin: 0; }
+h2 { font-family: var(--display); font-weight: 700; font-size: 20px; letter-spacing: 0.06em; text-transform: uppercase; margin: 0; }
+.sub { color: var(--khaki); font-size: 14px; }
 
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
-.tile { background: var(--board); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; display: grid; gap: 2px; }
-.tile b { font-family: var(--display); font-weight: 800; font-size: 2rem; line-height: 1; font-variant-numeric: tabular-nums; }
-.tile span { font-size: 0.8rem; color: var(--muted); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 2px; }
+.tile b { font-family: var(--display); font-weight: 700; font-size: 32px; line-height: 1; font-variant-numeric: tabular-nums; }
+.tile:nth-child(3) b { color: var(--clay-hi); }
+.tile span { font-size: 13px; color: var(--khaki); }
 
-.panel { background: var(--board); border: 1px solid var(--line); border-radius: 16px; overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
-th, td { padding: 8px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
-th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; background: var(--board); position: sticky; top: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+th, td { padding: 9px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th { font-family: var(--display); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--khaki); font-weight: 600; background: var(--panel); position: sticky; top: 0; }
 tr:last-child td { border-bottom: 0; }
 td.l, th.l { text-align: left; }
-td.mono { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
-td.name { font-weight: 600; }
-tr.yes td { background: var(--green-soft); }
-.hit { font-weight: 600; color: var(--green); }
+td.mono { font-family: var(--display); font-size: 13px; color: var(--muted); }
+td.name { font-weight: 700; }
+tr.yes td { background: var(--clay-soft); }
+.hit { font-family: var(--display); font-weight: 700; color: var(--clay-hi); }
 .miss { color: var(--muted); }
 .cmp { display: grid; gap: 3px; min-width: 120px; }
 .cmp i { display: block; height: 6px; border-radius: 3px; }
-.cmp .p { background: var(--blue); }
-.cmp .a { background: var(--green); }
-.legend { font-size: 0.8rem; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+.cmp .p { background: var(--sage); }
+.cmp .a { background: var(--clay); }
+.legend { font-size: 13px; color: var(--khaki); display: flex; gap: 14px; flex-wrap: wrap; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 
-.bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); }
-select { font: inherit; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--board); color: var(--ink); }
-select:focus-visible { outline: 2px solid var(--blue); }
-.empty { padding: 36px 20px; text-align: center; color: var(--muted); background: var(--board); border: 1px solid var(--line); border-radius: 16px; }
-.stack { display: grid; gap: 18px; }
-.stack.tight { gap: 8px; }
+.bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 14px; color: var(--khaki); }
+select { font: inherit; font-size: 16px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--cream); }
+.empty { padding: 36px 20px; text-align: center; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.stack { display: grid; gap: 20px; }
+.stack.tight { gap: 10px; }
 [hidden] { display: none !important; }
-footer { font-size: 0.8rem; color: var(--muted); }
+footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: 13px; color: var(--muted); }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
+  <div class="top">
+    <a class="brand" href="./" style="color: inherit; text-decoration: none">
+      <svg width="34" height="34" viewBox="0 0 36 36" aria-hidden="true"><path d="M4 14v8c0 3.3 6.3 6 14 6s14-2.7 14-6v-8" fill="#597B60"/><ellipse cx="18" cy="14" rx="14" ry="6" fill="#96AB88" stroke="#FDF1DB" stroke-width="1.5"/></svg>
+      <span>Who scores tonight</span>
+    </a>
+    <nav aria-label="Pages"><a href="./">Rankings</a><a href="history.html" aria-current="page">Past picks</a></nav>
+  </div>
+  <header class="intro">
     <h1>Past picks</h1>
-    <div class="sub">Each day's top 50 picks and who actually scored. Results are added the next morning. <a href="./">← Tonight's picks</a></div>
+    <div class="sub">Each day's top 50 picks and who actually scored. Results are added the next morning.</div>
   </header>
 
   <div class="empty" id="empty" hidden></div>
@@ -93,7 +100,7 @@ footer { font-size: 0.8rem; color: var(--muted); }
 
     <section class="stack tight">
       <h2>Predicted vs actual</h2>
-      <div class="legend"><span><i style="background:var(--blue)"></i>Average predicted chance</span><span><i style="background:var(--green)"></i>Share who scored</span></div>
+      <div class="legend"><span><i style="background:var(--sage)"></i>Average predicted chance</span><span><i style="background:var(--clay)"></i>Share who scored</span></div>
       <div class="panel"><table id="calib"></table></div>
     </section>
 
