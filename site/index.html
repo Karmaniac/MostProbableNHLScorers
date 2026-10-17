@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Libre+Franklin:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: one 760px column; a sticky search/filter bar over a ranked list. Each row: rank | player + stats | chance to score. */
+/* Layout: ranked list with a sticky search/filter bar, plus a "Your picks" panel (right column on wide screens, above the list on phones). Each row: rank | player + stats | chance to score | star. */
 :root {
   --ice: #F2F5F8;
   --board: #FFFFFF;
@@ -39,7 +39,7 @@
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--ice); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
-.wrap { max-width: 760px; margin: 0 auto; padding-inline: 16px; padding-block: max(24px, env(safe-area-inset-top)) max(48px, env(safe-area-inset-bottom)); display: grid; gap: 18px; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: max(24px, env(safe-area-inset-top)) max(48px, env(safe-area-inset-bottom)); display: grid; gap: 18px; }
 h1 { font-family: var(--display); font-weight: 800; font-size: clamp(2.4rem, 9vw, 3.4rem); line-height: 0.95; text-transform: uppercase; margin: 0; text-wrap: balance; }
 header { display: grid; gap: 6px; }
 .top { display: flex; justify-content: space-between; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
@@ -50,6 +50,31 @@ header { display: grid; gap: 6px; }
 .sub b { color: var(--ink); font-weight: 600; }
 
 .banner { padding: 10px 14px; border-radius: 10px; background: var(--amber-soft); color: var(--amber); font-size: 0.9rem; }
+
+.layout { display: grid; gap: 18px; align-items: start; }
+.main { min-width: 0; display: grid; gap: 18px; }
+@media (min-width: 980px) {
+  .layout { grid-template-columns: minmax(0, 1fr) 320px; }
+  .favs { position: sticky; top: 16px; }
+}
+@media (max-width: 979px) { .favs { order: -1; } }
+
+/* Your picks */
+.favs { background: var(--board); border: 1px solid var(--line); border-radius: 16px; padding: 14px; display: grid; gap: 10px; }
+.favs h2 { font-family: var(--display); font-weight: 800; font-size: 1.5rem; text-transform: uppercase; margin: 0; line-height: 1; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.favs h2 small { font-family: var(--body); font-weight: 400; font-size: 0.75rem; color: var(--muted); text-transform: none; }
+.favs ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.fav { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 10px; align-items: center; padding: 10px; border-radius: 10px; background: var(--ice); }
+.fav .name { font-size: 0.95rem; }
+.fav .meta { grid-column: 1 / -1; font-family: var(--mono); font-size: 0.72rem; }
+.fav .pct { font-size: 1.3rem; }
+.fav.scored { background: var(--red-soft); }
+.goal { font-weight: 700; font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; background: var(--red); color: var(--board); white-space: nowrap; }
+.favs .hint { font-size: 0.85rem; color: var(--muted); margin: 0; }
+.star { border: 0; background: none; cursor: pointer; font-size: 1.35rem; line-height: 1; width: 36px; height: 36px; border-radius: 8px; color: var(--muted); padding: 0; }
+.star[aria-pressed="true"] { color: var(--amber); }
+.star:hover { background: var(--blue-soft); }
+.star:focus-visible { outline: 2px solid var(--blue); }
 
 /* Sticky controls */
 .controls { position: sticky; top: 0; z-index: 2; background: var(--ice); padding-block: 10px; display: grid; gap: 10px; border-bottom: 1px solid var(--line); }
@@ -70,7 +95,7 @@ header { display: grid; gap: 6px; }
 
 /* Ranked list */
 ol.list { list-style: none; margin: 0; padding: 0; background: var(--board); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
-.row { display: grid; grid-template-columns: 38px minmax(0, 1fr) 92px; gap: 10px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.row { display: grid; grid-template-columns: 38px minmax(0, 1fr) 92px 36px; gap: 10px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .row:last-child { border-bottom: 0; }
 .rank { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .who { min-width: 0; display: grid; gap: 2px; }
@@ -104,6 +129,8 @@ footer code { font-family: var(--mono); }
 
   <div class="banner" id="banner" hidden></div>
 
+  <div class="layout">
+  <div class="main">
   <div class="controls" id="controls" hidden>
     <div class="search">
       <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Search players. Use commas for several: mcdavid, kaprizov" aria-label="Search players">
@@ -123,6 +150,13 @@ footer code { font-family: var(--mono); }
 
   <ol class="list" id="list" hidden></ol>
   <div class="empty" id="empty" hidden></div>
+  </div>
+  <aside class="favs" id="favs" aria-labelledby="favsTitle" hidden>
+    <h2 id="favsTitle">Your picks <small id="liveAt"></small></h2>
+    <ul id="favList"></ul>
+    <p class="hint" id="favHint">Tap ☆ beside a player to add them here. Goals show up during the evening (scores refresh about every 10–20 min). Saved on this device only.</p>
+  </aside>
+  </div>
 
   <footer>
     <span>Chance to score = 1 − e<sup>−xG</sup>, where xG blends shot rate, shooting %, opponent defence and home ice. Stats from the NHL's public API.</span>
@@ -139,7 +173,12 @@ footer code { font-family: var(--mono); }
   const fmtDate = (iso) => new Date(iso + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
   const fmtTime = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 
-  let players = [];
+  let players = [], games = [], live = null, today = "";
+  const key = (p) => `${p.team}|${p.name}`;
+  // Picks are per game day, like the Tims app: { date, keys: ["TEAM|Name", ...] }.
+  let picks = new Set();
+  const loadPicks = () => { try { const v = JSON.parse(localStorage.getItem("picks")); if (v && v.date === today) picks = new Set(v.keys); } catch (e) {} };
+  const savePicks = () => { try { localStorage.setItem("picks", JSON.stringify({ date: today, keys: [...picks] })); } catch (e) {} };
   const state = { q: "", game: null, pos: "all", hideOut: true };
   try { state.hideOut = localStorage.getItem("hideOut") !== "0"; } catch (e) {}
   $("hideOut").checked = state.hideOut;
@@ -193,12 +232,60 @@ footer code { font-family: var(--mono); }
           <span class="pct">${pct.toFixed(0)}<small>%</small></span>
           <span class="bar"><i style="width:${Math.min(100, pct / 60 * 100).toFixed(1)}%"></i></span>
         </div>
+        <button type="button" class="star" data-k="${esc(key(p))}" aria-pressed="${picks.has(key(p))}" aria-label="Pick ${esc(p.name)}">${picks.has(key(p)) ? "★" : "☆"}</button>
       </li>`;
     }).join("");
   }
 
+  function gameStatus(p) {
+    const g = live && live.games.find((x) => x.home === p.team || x.away === p.team);
+    const sched = games.find((x) => x.home === p.team || x.away === p.team);
+    if (!g || g.state === "FUT" || g.state === "PRE") return sched ? `${sched.away} @ ${sched.home} · ${fmtTime(sched.start)}` : "";
+    const score = `${g.away} ${g.away_score ?? 0} – ${g.home_score ?? 0} ${g.home}`;
+    if (g.state === "FINAL" || g.state === "OFF") return `${score} · Final`;
+    const per = g.period > 3 ? (g.period === 4 ? "OT" : "SO") : `P${g.period}`;
+    return `${score} · ${per} ${g.intermission ? "INT" : g.clock || ""}`;
+  }
+
+  function renderFavs() {
+    const mine = players.filter((p) => picks.has(key(p)));
+    $("favHint").hidden = mine.length > 0;
+    $("liveAt").textContent = live ? `scores ${fmtTime(live.updated_at)}` : "";
+    $("favList").innerHTML = mine.map((p) => {
+      const goals = (live && live.scorers[key(p)]) || 0;
+      return `<li class="fav${goals ? " scored" : ""}">
+        <span class="name">${esc(p.name)}</span>
+        ${goals ? `<span class="goal">🚨 ${goals > 1 ? goals + " goals" : "Goal"}</span>` : `<span class="pct">${(p.prob * 100).toFixed(0)}<small>%</small></span>`}
+        <button type="button" class="star" data-k="${esc(key(p))}" aria-pressed="true" aria-label="Remove ${esc(p.name)}">★</button>
+        <span class="meta">${esc(gameStatus(p))}</span>
+      </li>`;
+    }).join("");
+  }
+
+  function loadLive() {
+    fetch("live.json", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && d.date === today) { live = d; renderFavs(); } })
+      .catch(() => {});
+  }
+
+  function togglePick(e) {
+    const btn = e.target.closest(".star");
+    if (!btn) return;
+    const k = btn.dataset.k;
+    picks.has(k) ? picks.delete(k) : picks.add(k);
+    savePicks();
+    render();
+    renderFavs();
+  }
+  $("list").addEventListener("click", togglePick);
+  $("favList").addEventListener("click", togglePick);
+
   function setup(data) {
     players = data.groups.flatMap((g) => g.players).map((p) => ({ ...p, _n: norm(p.name) }));
+    games = data.games;
+    today = data.date;
+    loadPicks();
     const updated = new Date(data.generated_at);
     $("sub").innerHTML = `<span><b>${esc(fmtDate(data.date))}</b></span><span>${data.games.length} game${data.games.length === 1 ? "" : "s"}</span><span>Updated ${esc(updated.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }))}</span>`;
 
@@ -223,7 +310,11 @@ footer code { font-family: var(--mono); }
     });
 
     $("controls").hidden = false;
+    $("favs").hidden = false;
     render();
+    renderFavs();
+    loadLive();
+    setInterval(loadLive, 60000);
   }
 
   $("q").addEventListener("input", (e) => { state.q = e.target.value; $("clear").hidden = !state.q; render(); });

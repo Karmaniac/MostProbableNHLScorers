@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 .claude/
 tonight.txt
+site/live.json

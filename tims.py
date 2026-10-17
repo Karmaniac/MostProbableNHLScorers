@@ -4,7 +4,8 @@ Usage:
     py tims.py                  rank every skater playing today
     py tims.py players.txt      rank only the players in the file
     Options: --date YYYY-MM-DD (default today), --top N (show only the top N per group),
-             --json PATH (also save the rankings for the website in site/)
+             --json PATH (also save the rankings for the website in site/),
+             --live PATH (only save that day's live scores and goal scorers)
 
 players.txt: one player per line. Optional extras:
     - Team hint to disambiguate:  Elias Pettersson (VAN)   or   Sebastian Aho, CAR
@@ -303,6 +304,25 @@ def write_json(path, date, games, league_avg, ranked_groups):
         json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
 
 
+def write_live(path, date):
+    """Save tonight's scores and goal scorers for the website's picks panel (site/live.json)."""
+    games, scorers = [], {}
+    for g in get_json(f"{API}/score/{date}").get("games", []):
+        away, home = g["awayTeam"], g["homeTeam"]
+        games.append({"away": away["abbrev"], "home": home["abbrev"], "state": g["gameState"],
+                      "away_score": away.get("score"), "home_score": home.get("score"),
+                      "period": g.get("period"), "clock": (g.get("clock") or {}).get("timeRemaining"),
+                      "intermission": (g.get("clock") or {}).get("inIntermission", False)})
+        for goal in g.get("goals", []):
+            # Keyed by team|name to match data.json rows (names come from the same NHL API).
+            key = f"{goal['teamAbbrev']}|{goal['firstName']['default']} {goal['lastName']['default']}"
+            scorers[key] = scorers.get(key, 0) + 1
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"date": date, "updated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                   "games": games, "scorers": scorers}, f, ensure_ascii=False, separators=(",", ":"))
+    print(f"Saved live scores for {date} ({len(games)} games, {sum(scorers.values())} goals) to {path}")
+
+
 def record_history(json_path, csv_path, today):
     """Append the last saved day's top picks to the history CSV, with whether each one scored.
     Call before data.json is overwritten. Skips days already recorded or with games still to finish."""
@@ -349,7 +369,12 @@ def main():
     ap.add_argument("--json", metavar="PATH", help="also save the full rankings as JSON (used by the website)")
     ap.add_argument("--history", metavar="CSV",
                     help="before overwriting --json, append its day's top picks and whether they scored to CSV")
+    ap.add_argument("--live", metavar="PATH", help="only save the date's live scores and goal scorers as JSON")
     args = ap.parse_args()
+
+    if args.live:
+        write_live(args.live, args.date)
+        return
 
     if args.history and args.json:
         try:

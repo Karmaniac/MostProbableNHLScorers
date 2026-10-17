@@ -1,0 +1,43 @@
+name: Live scores
+
+on:
+  schedule:
+    # Every 10 min, 23:00-06:59 UTC (7 PM-3 AM Eastern in summer time, 6 PM-2 AM in winter).
+    # GitHub often starts scheduled runs late, so expect 10-20 min between updates.
+    - cron: "*/10 23,0-6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # Use the picks' date, not today's: late games run past midnight Eastern.
+      - name: Fetch scores and goal scorers
+        run: python tims.py --live site/live.json --date "$(jq -r .date site/data.json)"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
