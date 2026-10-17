@@ -5,7 +5,8 @@ Usage:
     py tims.py players.txt      rank only the players in the file
     Options: --date YYYY-MM-DD (default today), --top N (show only the top N per group),
              --json PATH (also save the rankings for the website in site/),
-             --live PATH (only save that day's live scores and goal scorers)
+             --live PATH (only save that day's live scores and goal scorers),
+             --backfill START --history CSV [--results JSON] (re-rank and log past days)
 
 players.txt: one player per line. Optional extras:
     - Team hint to disambiguate:  Elias Pettersson (VAN)   or   Sebastian Aho, CAR
@@ -31,6 +32,7 @@ import math
 import os
 import re
 import sys
+import tempfile
 import time
 import unicodedata
 import urllib.parse
@@ -57,6 +59,7 @@ HISTORY_FIELDS = ["date", "rank", "player_id", "name", "pos", "team", "opp", "gp
                   "sh_pct", "l10", "opp_factor", "xg", "prob", "flagged", "scored"]
 
 
+@lru_cache(maxsize=None)  # one run asks for the same player pages once per day it ranks (--backfill)
 def get_json(url, retries=3):
     req = urllib.request.Request(url, headers={"User-Agent": "tims-picker/1.0"})
     for attempt in range(retries):
@@ -114,8 +117,10 @@ def load_schedule(date):
 
 
 def load_defense(date):
-    """Return ({team: opponent-strength factor}, league avg GA/GP) from standings."""
-    rows = get_json(f"{API}/standings/{date}").get("standings", [])
+    """Return ({team: opponent-strength factor}, league avg GA/GP) from standings before `date`."""
+    # Standings for a date include that day's games, so use the day before.
+    before = (dt.date.fromisoformat(date) - dt.timedelta(days=1)).isoformat()
+    rows = get_json(f"{API}/standings/{before}").get("standings", [])
     total_gp = sum(r["gamesPlayed"] for r in rows)
     if not total_gp:
         return {}, None
@@ -198,12 +203,18 @@ def analyze(name, team_hint, ctx, pid=None):
         row.update(id=pid, team=team, pos=landing.get("position", "?"))
 
         season = ctx["season"]
+        # This season's games before the date (so past dates can be re-ranked), newest first.
+        log = sorted((g for g in get_json(f"{API}/player/{pid}/game-log/{season}/2").get("gameLog", [])
+                      if g["gameDate"] < ctx["date"]), key=lambda g: g["gameDate"], reverse=True)
+
         # Weighted multi-season shot rate and finishing.
         wgp = wgoals = wshots = 0.0
         for i, w in enumerate(SEASON_WEIGHTS):
-            gp, goals, shots = season_totals(landing, season - 10001 * i)
             if i == 0:
+                gp, goals, shots = len(log), sum(g.get("goals", 0) for g in log), sum(g.get("shots", 0) for g in log)
                 row.update(gp=gp, goals=goals)
+            else:
+                gp, goals, shots = season_totals(landing, season - 10001 * i)
             wgp += w * gp
             wgoals += w * goals
             wshots += w * shots
@@ -213,8 +224,6 @@ def analyze(name, team_hint, ctx, pid=None):
         sh_pct = (wgoals + PRIOR_SH_PCT[pos] * PRIOR_SHOTS) / (wshots + PRIOR_SHOTS)
 
         # Recent form from this season's game log.
-        log = get_json(f"{API}/player/{pid}/game-log/{season}/2").get("gameLog", [])
-        log.sort(key=lambda g: g["gameDate"], reverse=True)
         recent = log[:RECENT_GAMES]
         if recent:
             recent_spg = sum(g.get("shots", 0) for g in recent) / len(recent)
@@ -304,8 +313,19 @@ def write_json(path, date, games, league_avg, ranked_groups):
         json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
 
 
+def goal_key(goal):
+    """TEAM|First Last, matching the website's key for a data.json row (names come from the same NHL API)."""
+    return f"{goal['teamAbbrev']}|{goal['firstName']['default']} {goal['lastName']['default']}"
+
+
+def counted_goals(game):
+    """A game's goals that count for Tims (shootout goals don't)."""
+    return [g for g in game.get("goals", []) if g["periodDescriptor"]["periodType"] != "SO"]
+
+
 def write_live(path, date):
-    """Save tonight's scores and goal scorers for the website's picks panel (site/live.json)."""
+    """Save tonight's scores and goal scorers for the website's picks panel (site/live.json).
+    scorers maps TEAM|Name -> one highlight clip URL (or null until the NHL posts it) per goal."""
     games, scorers = [], {}
     for g in get_json(f"{API}/score/{date}").get("games", []):
         away, home = g["awayTeam"], g["homeTeam"]
@@ -313,18 +333,17 @@ def write_live(path, date):
                       "away_score": away.get("score"), "home_score": home.get("score"),
                       "period": g.get("period"), "clock": (g.get("clock") or {}).get("timeRemaining"),
                       "intermission": (g.get("clock") or {}).get("inIntermission", False)})
-        for goal in g.get("goals", []):
-            # Keyed by team|name to match data.json rows (names come from the same NHL API).
-            key = f"{goal['teamAbbrev']}|{goal['firstName']['default']} {goal['lastName']['default']}"
-            scorers[key] = scorers.get(key, 0) + 1
+        for goal in counted_goals(g):
+            scorers.setdefault(goal_key(goal), []).append(goal.get("highlightClipSharingUrl"))
     with open(path, "w", encoding="utf-8") as f:
         json.dump({"date": date, "updated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
                    "games": games, "scorers": scorers}, f, ensure_ascii=False, separators=(",", ":"))
-    print(f"Saved live scores for {date} ({len(games)} games, {sum(scorers.values())} goals) to {path}")
+    print(f"Saved live scores for {date} ({len(games)} games, {sum(map(len, scorers.values()))} goals) to {path}")
 
 
-def record_history(json_path, csv_path, today):
+def record_history(json_path, csv_path, today, results_path=None):
     """Append the last saved day's top picks to the history CSV, with whether each one scored.
+    Also saves that day's goal counts per TEAM|Name to results_path (the website's pick scorecard).
     Call before data.json is overwritten. Skips days already recorded or with games still to finish."""
     try:
         with open(json_path, encoding="utf-8") as f:
@@ -343,8 +362,20 @@ def record_history(json_path, csv_path, today):
     if any(g.get("gameScheduleState") == "OK" and g.get("gameState") not in ("OFF", "FINAL") for g in games):
         print(f"History: {date} games not final yet; will record on a later run.")
         return
-    # Shootout goals don't count as goals.
-    goals = [g for game in games for g in game.get("goals", []) if g["periodDescriptor"]["periodType"] != "SO"]
+    goals = [g for game in games for g in counted_goals(game)]
+    if results_path:
+        # ponytail: grows ~1.5 KB per game day (~300 KB a season); prune old dates if it gets slow to load.
+        try:
+            with open(results_path, encoding="utf-8") as f:
+                results = json.load(f)
+        except FileNotFoundError:
+            results = {}
+        day_goals = {}
+        for g in goals:
+            day_goals[goal_key(g)] = day_goals.get(goal_key(g), 0) + 1
+        results[date] = day_goals
+        with open(results_path, "w", encoding="utf-8") as f:
+            json.dump(results, f, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     ids = {g["playerId"] for g in goals}
     names = {normalize(f"{g['firstName']['default']} {g['lastName']['default']}") for g in goals}
     with open(csv_path, "a", newline="", encoding="utf-8") as f:
@@ -358,6 +389,39 @@ def record_history(json_path, csv_path, today):
     print(f"History: recorded top {HISTORY_TOP} picks for {date} in {csv_path}.")
 
 
+def rank_players(ctx, groups, league_avg):
+    """Analyze every player in [(group name, [(name, team_hint, player_id)])]; returns [(group name, sorted rows)]."""
+    all_players = [p for _, players in groups for p in players]
+    print(f"Analyzing {len(all_players)} players for {ctx['date']} ({len(ctx['games']) // 2} games)", end="")
+    print(f", league avg {league_avg:.2f} GA/GP" if league_avg else "", end="\n\n")
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        results = list(pool.map(lambda p: analyze(p[0], p[1], ctx, p[2]), all_players))
+    ranked, i = [], 0
+    for group_name, players in groups:
+        ranked.append((group_name, sorted(results[i:i + len(players)], key=sort_key, reverse=True)))
+        i += len(players)
+    return ranked
+
+
+def backfill(start, today, csv_path, results_path):
+    """Re-rank every game day from `start` to yesterday as if it were that morning, and log each one
+    to the history CSV and results JSON (days already in the CSV are skipped).
+    ponytail: uses today's rosters, so players since traded/sent down are on their current team or missing."""
+    d = dt.date.fromisoformat(start)
+    with tempfile.TemporaryDirectory() as tmp:
+        day_json = os.path.join(tmp, "day.json")
+        while d.isoformat() < today:
+            date, d = d.isoformat(), d + dt.timedelta(days=1)
+            games, season = load_schedule(date)
+            if not games:
+                continue
+            defense, league_avg = load_defense(date)
+            ctx = {"date": date, "games": games, "season": season, "defense": defense}
+            ranked = rank_players(ctx, [(f"Everyone playing {date}", load_skaters(games))], league_avg)
+            write_json(day_json, date, games, league_avg, ranked)
+            record_history(day_json, csv_path, today, results_path)
+
+
 def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -369,6 +433,10 @@ def main():
     ap.add_argument("--json", metavar="PATH", help="also save the full rankings as JSON (used by the website)")
     ap.add_argument("--history", metavar="CSV",
                     help="before overwriting --json, append its day's top picks and whether they scored to CSV")
+    ap.add_argument("--results", metavar="PATH",
+                    help="with --history, also save each finished day's goal scorers to this JSON (pick scorecard)")
+    ap.add_argument("--backfill", metavar="START",
+                    help="with --history, re-rank every game day from START (YYYY-MM-DD) to before --date and log them")
     ap.add_argument("--live", metavar="PATH", help="only save the date's live scores and goal scorers as JSON")
     args = ap.parse_args()
 
@@ -376,9 +444,15 @@ def main():
         write_live(args.live, args.date)
         return
 
+    if args.backfill:
+        if not args.history:
+            sys.exit("--backfill needs --history CSV (and optionally --results JSON).")
+        backfill(args.backfill, args.date, args.history, args.results)
+        return
+
     if args.history and args.json:
         try:
-            record_history(args.json, args.history, args.date)
+            record_history(args.json, args.history, args.date, args.results)
         except Exception as e:  # never let history break the day's picks
             print(f"History: failed ({e})")
 
@@ -401,17 +475,9 @@ def main():
     else:
         groups = [(f"Everyone playing {args.date}", load_skaters(games))]
 
-    all_players = [p for _, players in groups for p in players]
-    print(f"Analyzing {len(all_players)} players for {args.date} ({len(games) // 2} games)", end="")
-    print(f", league avg {league_avg:.2f} GA/GP" if league_avg else "", end="\n\n")
-    with ThreadPoolExecutor(max_workers=16) as pool:
-        results = list(pool.map(lambda p: analyze(p[0], p[1], ctx, p[2]), all_players))
-
-    picks, ranked, i = [], [], 0
-    for group_name, players in groups:
-        rows = sorted(results[i:i + len(players)], key=sort_key, reverse=True)
-        i += len(players)
-        ranked.append((group_name, rows))
+    ranked = rank_players(ctx, groups, league_avg)
+    picks = []
+    for group_name, rows in ranked:
         print(f"== {group_name} ==")
         print_table(rows[:args.top])
         print()

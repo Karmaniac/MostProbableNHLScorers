@@ -70,6 +70,15 @@ header { display: grid; gap: 6px; }
 .fav .pct { font-size: 1.3rem; }
 .fav.scored { background: var(--red-soft); }
 .goal { font-weight: 700; font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; background: var(--red); color: var(--board); white-space: nowrap; }
+a.goal { text-decoration: none; }
+a.goal:hover { filter: brightness(1.15); }
+a.goal:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.scorecard { border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 4px; }
+.scorecard h3 { margin: 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.scorecard .tally { margin: 0; font-size: 0.88rem; }
+.scorecard ul { gap: 2px; margin-top: 4px; font-size: 0.8rem; color: var(--muted); }
+.scorecard ul b { color: var(--red); font-weight: 600; }
+.scorecard .when { font-family: var(--mono); color: var(--ink); margin-right: 4px; }
 .favs .hint { font-size: 0.85rem; color: var(--muted); margin: 0; }
 .star { border: 0; background: none; cursor: pointer; font-size: 1.35rem; line-height: 1; width: 36px; height: 36px; border-radius: 8px; color: var(--muted); padding: 0; }
 .star[aria-pressed="true"] { color: var(--amber); }
@@ -154,6 +163,7 @@ footer code { font-family: var(--mono); }
   <aside class="favs" id="favs" aria-labelledby="favsTitle" hidden>
     <h2 id="favsTitle">Your picks <small id="liveAt"></small></h2>
     <ul id="favList"></ul>
+    <div class="scorecard" id="scorecard" hidden></div>
     <p class="hint" id="favHint">Tap ☆ beside a player to add them here. Goals show up during the evening (scores refresh about every 10–20 min). Saved on this device only.</p>
   </aside>
   </div>
@@ -175,10 +185,22 @@ footer code { font-family: var(--mono); }
 
   let players = [], games = [], live = null, today = "";
   const key = (p) => `${p.team}|${p.name}`;
-  // Picks are per game day, like the Tims app: { date, keys: ["TEAM|Name", ...] }.
-  let picks = new Set();
-  const loadPicks = () => { try { const v = JSON.parse(localStorage.getItem("picks")); if (v && v.date === today) picks = new Set(v.keys); } catch (e) {} };
-  const savePicks = () => { try { localStorage.setItem("picks", JSON.stringify({ date: today, keys: [...picks] })); } catch (e) {} };
+  // Picks are per game day, like the Tims app. Every day's picks are kept for the scorecard:
+  // pickLog = { "YYYY-MM-DD": ["TEAM|Name", ...] }, on this device only.
+  let picks = new Set(), log = {}, results = {};
+  const loadPicks = () => {
+    try {
+      log = JSON.parse(localStorage.getItem("pickLog")) || {};
+      const old = JSON.parse(localStorage.getItem("picks")); // earlier format: { date, keys }
+      if (old && !log[old.date]) log[old.date] = old.keys;
+      localStorage.removeItem("picks");
+    } catch (e) {}
+    picks = new Set(log[today] || []);
+  };
+  const savePicks = () => {
+    if (picks.size) log[today] = [...picks]; else delete log[today];
+    try { localStorage.setItem("pickLog", JSON.stringify(log)); } catch (e) {}
+  };
   const state = { q: "", game: null, pos: "all", hideOut: true };
   try { state.hideOut = localStorage.getItem("hideOut") !== "0"; } catch (e) {}
   $("hideOut").checked = state.hideOut;
@@ -252,14 +274,43 @@ footer code { font-family: var(--mono); }
     $("favHint").hidden = mine.length > 0;
     $("liveAt").textContent = live ? `scores ${fmtTime(live.updated_at)}` : "";
     $("favList").innerHTML = mine.map((p) => {
-      const goals = (live && live.scorers[key(p)]) || 0;
+      const clips = (live && live.scorers[key(p)]) || [];
+      const goals = clips.length, clip = clips.find(Boolean);
+      const badge = `🚨 ${goals > 1 ? goals + " goals" : "Goal"}`;
       return `<li class="fav${goals ? " scored" : ""}">
         <span class="name">${esc(p.name)}</span>
-        ${goals ? `<span class="goal">🚨 ${goals > 1 ? goals + " goals" : "Goal"}</span>` : `<span class="pct">${(p.prob * 100).toFixed(0)}<small>%</small></span>`}
+        ${!goals ? `<span class="pct">${(p.prob * 100).toFixed(0)}<small>%</small></span>`
+          : clip ? `<a class="goal" href="${esc(clip)}" target="_blank" rel="noopener" title="Watch the goal">${badge} ▶</a>`
+          : `<span class="goal">${badge}</span>`}
         <button type="button" class="star" data-k="${esc(key(p))}" aria-pressed="true" aria-label="Remove ${esc(p.name)}">★</button>
         <span class="meta">${esc(gameStatus(p))}</span>
       </li>`;
     }).join("");
+    renderScorecard();
+  }
+
+  // Record from past days whose games are final (results.json is written by the morning update).
+  function renderScorecard() {
+    const days = Object.keys(log).filter((d) => d < today && results[d]).sort();
+    $("scorecard").hidden = !days.length;
+    if (!days.length) return;
+    let n = 0, hits = 0, goals = 0, streak = 0, best = 0;
+    for (const d of days) {
+      const scored = log[d].filter((k) => results[d][k]);
+      n += log[d].length;
+      hits += scored.length;
+      goals += scored.reduce((sum, k) => sum + results[d][k], 0);
+      streak = scored.length ? streak + 1 : 0;
+      best = Math.max(best, streak);
+    }
+    const recent = days.slice(-5).reverse().map((d) => {
+      const names = log[d].map((k) => { const name = k.split("|")[1]; return results[d][k] ? `<b>${esc(name)}</b>` : esc(name); });
+      return `<li><span class="when">${esc(new Date(d + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }))}</span> ${names.join(", ")}</li>`;
+    }).join("");
+    $("scorecard").innerHTML = `<h3>Your record</h3>
+      <p class="tally"><b>${hits}</b> of ${n} picks scored (${Math.round(hits / n * 100)}%) · ${goals} goal${goals === 1 ? "" : "s"} · ${days.length} day${days.length === 1 ? "" : "s"}</p>
+      <p class="tally">Scoring streak: <b>${streak}</b> day${streak === 1 ? "" : "s"} · best ${best}</p>
+      <ul>${recent}</ul>`;
   }
 
   function loadLive() {
@@ -315,6 +366,10 @@ footer code { font-family: var(--mono); }
     renderFavs();
     loadLive();
     setInterval(loadLive, 60000);
+    fetch("results.json", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((d) => { results = d; renderScorecard(); })
+      .catch(() => {});
   }
 
   $("q").addEventListener("input", (e) => { state.q = e.target.value; $("clear").hidden = !state.q; render(); });
