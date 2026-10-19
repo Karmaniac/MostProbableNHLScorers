@@ -233,8 +233,8 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: 13px; 
   </div>
 
   <footer>
-    <span>Chance to score = 1 − e<sup>−xG</sup>, where xG blends shot rate, shooting %, opponent defence and home ice. Stats from the NHL's public API.</span>
-    <span>Row stats: xG · shots per game · shooting % · last 10 games · opponent defence (1.00 = league average). Rank is overall, so it stays the same when you filter.</span>
+    <span>Chance to score = 1 − e<sup>−xG</sup>. xG comes from a model trained on two full NHL seasons of real games: it weighs expected ice time (even strength and power play), shot volume, shooting %, the opponent's defence and penalty kill, home ice and back-to-backs. Stats from the NHL's public API.</span>
+    <span>Row stats: xG · expected power-play minutes · shots per game · shooting % · last 10 games · opponent defence (1.00 = league average). Rank is overall, so it stays the same when you filter.</span>
   </footer>
 </div>
 
@@ -281,6 +281,7 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: 13px; 
   function statLine(p) {
     return [
       `xG ${p.xg.toFixed(2)}`,
+      p.pp_min != null ? `PP ${p.pp_min.toFixed(1)} min` : null,
       p.shots_pg != null ? `${p.shots_pg.toFixed(2)} S/GP` : null,
       p.sh_pct != null ? `${(p.sh_pct * 100).toFixed(1)}% Sh` : null,
       p.l10 ? `L10 ${p.l10.replace(" in ", "/")}` : null,
@@ -312,7 +313,7 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: 13px; 
       const stats = statLine(p).map((s) => `<span>${esc(s)}</span>`).join("");
       const missed = p.notes.find((n) => n.includes("missed last"));
       const others = p.notes.filter((n) => n !== missed);
-      return `<li class="row${pct >= 40 ? " hot" : ""}${p.flagged ? " out" : ""}">
+      return `<li class="row${pct >= 35 ? " hot" : ""}${p.flagged ? " out" : ""}">
         <span class="rank">${p.rank}</span>
         <div class="who">
           <span class="name">${esc(p.name)}</span>

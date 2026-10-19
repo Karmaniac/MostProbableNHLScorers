@@ -2,7 +2,7 @@
 
 Ranks every NHL skater playing today by their chance to score, for the Tim Hortons Hockey Challenge.
 The site is published to GitHub Pages and updates itself; the ranking script uses only the Python
-standard library and the NHL's public API.
+standard library and the NHL's public APIs.
 
 ## The site
 
@@ -19,22 +19,47 @@ standard library and the NHL's public API.
 Each player gets an expected-goals number for tonight (xG), turned into a chance of scoring at least once:
 
 ```
-xG     = shots per game × shooting % × opponent factor × home/away factor
-chance = 1 − e^(−xG)        (goals treated as a Poisson process)
+log(xG) = b0 + b1·log(PP minutes) + b2·log(EV minutes) + … + b_home·home + …   (20 inputs)
+chance  = 1 − e^(−xG)        (goals treated as a Poisson process)
 ```
 
-1. **Shots per game**: this season and the previous two, weighted 1.0 / 0.6 / 0.3. Shot volume is the
-   most stable predictor of goals.
-2. **Recent form**: the last 10 games' shot rate gets up to 30% of the weight, which catches line and
-   power-play changes.
-3. **Shooting %**: blended with 100 league-average shots (10.5% forwards, 4.5% defence) so hot streaks
-   on small samples don't dominate.
-4. **Opponent**: goals against per game vs league average, shrunk toward average early in the season
-   and capped at 0.8–1.25×.
-5. **Home ice**: +3% at home, −3% away.
-6. **Availability**: players who missed their team's last 2+ games drop to the bottom.
+The weights come from a **Poisson regression** (`model.json`) trained on two full seasons of real games:
+2024–25 to learn the weights, 2025–26 to choose its settings, then refit on both. It was tested on the
+2026–27 season, which it never saw, where it beat both hand-built formulas on accuracy. Its inputs
+(`features.py`), all known on the morning of the game:
 
-The constants are at the top of `tims.py`.
+- **Ice time** (the two biggest weights): expected even-strength (EV) and power-play (PP) minutes, from
+  this season and the previous two, pulled toward the last two weeks (`tims_v2.py`).
+- **Shooting**: EV and PP shots per 60 and shooting %, plus the original formula's shots per game
+  and shooting % (below), each blended with league averages so hot streaks on small samples don't dominate.
+- **Matchup**: the opponent's goals against, even-strength defence, penalties taken and penalty kill.
+- **Context**: home or away, forward or defenceman, back-to-backs, games played, missed games.
+- **Availability**: players who missed their team's last 2+ games drop to the bottom.
+
+If `model.json` or the extra stats can't be loaded, `tims.py` falls back to the original formula (v1):
+
+```
+xG = shots per game × shooting % × opponent factor × home/away factor
+```
+
+1. **Shots per game**: this season and the previous two, weighted 1.0 / 0.6 / 0.3, with the last 10 games
+   getting up to 30% of the weight.
+2. **Shooting %**: blended with 100 league-average shots (10.5% forwards, 4.5% defence).
+3. **Opponent**: goals against per game vs league average, shrunk toward average early in the season
+   and capped at 0.8–1.25×.
+4. **Home ice**: +3% at home, −3% away.
+
+v1's constants are at the top of `tims.py`; v2's at the top of `tims_v2.py`.
+
+### Retraining the model
+
+```
+python backtest.py --season 20242025 20252026 20262027 --csv training_data.csv   # about an hour
+python train.py training_data.csv     # fits the regression (and LightGBM to compare), writes model.json
+```
+
+`train.py` needs NumPy (and LightGBM for the comparison); the site itself only needs the standard library.
+`Model Research Report.pdf` explains the research and results in detail.
 
 ## Automatic updates
 
@@ -55,6 +80,7 @@ python tims.py players.txt        # rank only the players in the file (supports 
 python tims.py --date 2026-10-16  # a different day
 python tims.py --top 25 --json site/data.json   # also write the site's data
 python tims.py --live site/live.json            # just tonight's scores and scorers
+python tims.py --model v1         # rank with the original formula instead of the regression
 python tims.py --backfill 2026-09-29 --history site/history.csv --results site/results.json
                                   # re-rank past days as of each morning and log who scored
 ```
@@ -68,7 +94,10 @@ http://localhost:8000.
 
 ## Files
 
-- `tims.py`: the model, the history logger and the live-score writer
+- `tims.py`: the rankings (v1 formula + regression), the history logger and the live-score writer
+- `tims_v2.py`: even-strength / power-play ice time and shot rates, an input to the regression
+- `features.py` and `model.json`: the regression's inputs and fitted weights
+- `backtest.py`, `train.py`: rebuild the training data from past seasons, and refit and compare models
 - `site/`: the published site (`index.html`, `history.html` and their data files)
 - `algorithm.html`: a longer explanation of the model, with a calculator
 - `.github/workflows/`: the scheduled update and live-score jobs

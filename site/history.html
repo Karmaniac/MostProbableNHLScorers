@@ -10,7 +10,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap">
 <style>
-/* Same "Scoreboard" look as index.html. Summary tiles, a predicted-vs-actual table, then one day's picks as a table. */
+/* Same "Scoreboard" look as index.html. Summary tiles, a predicted-vs-actual table, then a calendar to pick a day
+   and that day's picks as a table. */
 :root {
   --bg: #1B2522;
   --panel: #26332F;
@@ -70,8 +71,32 @@ tr.yes td { background: var(--clay-soft); }
 .legend { font-size: 13px; color: var(--khaki); display: flex; gap: 14px; flex-wrap: wrap; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 
-.bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 14px; color: var(--khaki); }
-select { font: inherit; font-size: 16px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--cream); }
+/* By day: a month calendar of tracked days beside a summary of the chosen day, then its picks. */
+.daybar { display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch; }
+.cal { flex: 0 1 380px; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.cal-head b { font-family: var(--display); font-weight: 700; font-size: 16px; letter-spacing: 0.08em; text-transform: uppercase; }
+.cal-nav { width: 44px; height: 40px; border-radius: 8px; border: 1px solid var(--line); background: none; color: var(--cream); font-size: 20px; line-height: 1; cursor: pointer; }
+.cal-nav:hover:not(:disabled) { background: var(--bg); }
+.cal-nav:disabled { opacity: 0.3; cursor: default; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal-dow { text-align: center; font: 600 11px var(--display); letter-spacing: 0.1em; color: var(--muted); padding: 2px 0 4px; }
+.cal-day { min-height: 48px; border-radius: 8px; display: grid; place-content: center; justify-items: center; gap: 1px; font: 500 14px var(--display); color: var(--line); font-variant-numeric: tabular-nums; }
+button.cal-day { border: 1px solid var(--line); background: var(--bg); color: var(--cream); cursor: pointer; padding: 0; }
+button.cal-day small { font-size: 10px; color: var(--clay-hi); letter-spacing: 0.02em; }
+button.cal-day:hover { border-color: var(--sage); }
+button.cal-day[aria-pressed="true"] { background: var(--sage); border-color: var(--sage); color: var(--bg); font-weight: 700; }
+button.cal-day[aria-pressed="true"] small { color: var(--bg); }
+.cal-key { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.daysum { flex: 1 1 240px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; align-content: center; gap: 10px; }
+.daysum .when { font-family: var(--display); font-weight: 700; font-size: clamp(22px, 5vw, 30px); line-height: 1; text-transform: uppercase; }
+.daysum .nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.daysum .nums div { background: var(--bg); border-radius: 8px; padding: 10px 12px; display: grid; }
+.daysum .nums b { font-family: var(--display); font-weight: 700; font-size: 26px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.daysum .nums div:first-child b { color: var(--clay-hi); }
+.daysum .nums span { font-size: 12px; color: var(--khaki); }
+.daysum p { margin: 0; font-size: 14px; color: var(--khaki); }
+.daysum p b { color: var(--cream); }
 .empty { padding: 36px 20px; text-align: center; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
 .stack { display: grid; gap: 20px; }
 .stack.tight { gap: 10px; }
@@ -106,7 +131,18 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: 13px; 
 
     <section class="stack tight">
       <h2>By day</h2>
-      <div class="bar"><select id="day" aria-label="Choose a day"></select><span id="daySum"></span></div>
+      <div class="daybar">
+        <div class="cal" role="group" aria-label="Choose a day">
+          <div class="cal-head">
+            <button type="button" class="cal-nav" id="calPrev" aria-label="Previous month">‹</button>
+            <b id="calMonth" aria-live="polite"></b>
+            <button type="button" class="cal-nav" id="calNext" aria-label="Next month">›</button>
+          </div>
+          <div class="cal-grid" id="calGrid"></div>
+          <div class="cal-key">Days with picks show how many of the top 50 scored.</div>
+        </div>
+        <div class="daysum" id="daySum" aria-live="polite"></div>
+      </div>
       <div class="panel"><table id="picks"></table></div>
     </section>
   </div>
@@ -168,11 +204,50 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: 13px; 
           <td class="l"><div class="cmp"><i class="p" style="width:${(s.pred / max * 100).toFixed(1)}%"></i><i class="a" style="width:${(s.rate / max * 100).toFixed(1)}%"></i></div></td></tr>`;
       }).join("");
 
-    $("day").innerHTML = days.map((d) => `<option value="${d}">${esc(fmtDate(d))}</option>`).join("");
+    // Calendar: one month at a time (Sunday first); days with picks are buttons, the rest are plain numbers.
+    const byDate = new Map(days.map((d) => [d, []]));
+    rows.forEach((r) => byDate.get(r.date).push(r));
+    const daySt = new Map(days.map((d) => [d, stats(byDate.get(d))]));
+    const monthKey = (iso) => iso.slice(0, 7);
+    const months = [...new Set(days.map(monthKey))].sort();
+    const pad = (n) => String(n).padStart(2, "0");
+    let selected = days[0], view = monthKey(selected);
+
+    const dowNames = [...Array(7)].map((_, i) => new Date(2026, 1, 1 + i).toLocaleDateString(undefined, { weekday: "narrow" }));
+    function renderCal() {
+      const [y, m] = view.split("-").map(Number);
+      $("calMonth").textContent = new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+      const i = months.indexOf(view);
+      $("calPrev").disabled = i <= 0;
+      $("calNext").disabled = i >= months.length - 1;
+      const cells = dowNames.map((n) => `<span class="cal-dow" aria-hidden="true">${esc(n)}</span>`);
+      for (let k = new Date(y, m - 1, 1).getDay(); k > 0; k--) cells.push(`<span class="cal-day"></span>`);
+      for (let d = 1, last = new Date(y, m, 0).getDate(); d <= last; d++) {
+        const iso = `${y}-${pad(m)}-${pad(d)}`, s = daySt.get(iso);
+        cells.push(s
+          ? `<button type="button" class="cal-day" data-d="${iso}" aria-pressed="${iso === selected}" aria-label="${esc(fmtDate(iso))}: ${s.hits} of ${s.n} scored">${d}<small>${s.hits}/${s.n}</small></button>`
+          : `<span class="cal-day">${d}</span>`);
+      }
+      $("calGrid").innerHTML = cells.join("");
+    }
+    $("calGrid").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-d]");
+      if (btn) { selected = btn.dataset.d; renderCal(); showDay(); }
+    });
+    $("calPrev").addEventListener("click", () => { view = months[months.indexOf(view) - 1]; renderCal(); });
+    $("calNext").addEventListener("click", () => { view = months[months.indexOf(view) + 1]; renderCal(); });
+
     const showDay = () => {
-      const day = rows.filter((r) => r.date === $("day").value).sort((a, b) => a.rank - b.rank);
-      const s = stats(day);
-      $("daySum").textContent = `${s.hits} of ${s.n} scored · expected ${(s.pred * s.n).toFixed(1)}`;
+      const day = byDate.get(selected).slice().sort((a, b) => a.rank - b.rank);
+      const s = daySt.get(selected);
+      const top10 = day.filter((r) => r.rank <= 10), first = day[0];
+      $("daySum").innerHTML = `<span class="when">${esc(fmtDate(selected))}</span>
+        <div class="nums">
+          <div><b>${s.hits}/${s.n}</b><span>picks scored</span></div>
+          <div><b>${(s.pred * s.n).toFixed(1)}</b><span>expected to score</span></div>
+          <div><b>${top10.filter((r) => r.scored).length}/${top10.length}</b><span>of the top 10</span></div>
+        </div>
+        ${first ? `<p>#1 pick: <b>${esc(first.name)}</b> (${pct(first.prob)}) ${first.scored ? '<span class="hit">✓ scored</span>' : "didn't score"}</p>` : ""}`;
       $("picks").innerHTML = `<tr><th>#</th><th class="l">Player</th><th class="l">Team</th><th class="l">Opp</th><th>S/GP</th><th>Sh%</th><th class="l">L10</th><th>OppD</th><th>xG</th><th>Chance</th><th>Scored</th></tr>` +
         day.map((r) => `<tr class="${r.scored ? "yes" : ""}">
           <td>${r.rank}</td><td class="l name">${esc(r.name)}${r.flagged ? " ⚠" : ""}</td><td class="l">${esc(r.team)}</td><td class="l">${esc(r.opp)}</td>
@@ -180,7 +255,7 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: 13px; 
           <td>${r.opp_factor.toFixed(2)}</td><td>${r.xg.toFixed(2)}</td><td>${pct(r.prob)}</td>
           <td>${r.scored ? '<span class="hit">✓ Goal</span>' : '<span class="miss">–</span>'}</td></tr>`).join("");
     };
-    $("day").addEventListener("change", showDay);
+    renderCal();
     showDay();
     $("main").hidden = false;
   }

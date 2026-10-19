@@ -6,14 +6,15 @@ Usage:
     Options: --date YYYY-MM-DD (default today), --top N (show only the top N per group),
              --json PATH (also save the rankings for the website in site/),
              --live PATH (only save that day's live scores and goal scorers),
-             --backfill START --history CSV [--results JSON] (re-rank and log past days)
+             --backfill START --history CSV [--results JSON] (re-rank and log past days),
+             --model v1 (skip the regression and use the v1 formula below)
 
 players.txt: one player per line. Optional extras:
     - Team hint to disambiguate:  Elias Pettersson (VAN)   or   Sebastian Aho, CAR
     - Group headers (Tims has you pick one player per group):  Group 1   /   Group 2:
     - Lines starting with # are ignored.
 
-Model (expected goals tonight -> probability of at least one goal):
+v1 formula (expected goals tonight -> probability of at least one goal):
     1. Shot volume: shots per game over this season + the previous two, weighted toward recent seasons.
     2. Finishing: shooting % regressed toward a positional average so small samples don't fool us.
     3. Recent form: shots per game over the last 10 games nudges the volume estimate (line/PP changes).
@@ -21,7 +22,12 @@ Model (expected goals tonight -> probability of at least one goal):
        plus a small home-ice adjustment.
     5. P(score) = 1 - exp(-xG), treating goals as a Poisson process.
 
-Data comes from the NHL's public API (api-web.nhle.com). Only the standard library is used.
+The published chances come from a Poisson regression (model.json, fitted by train.py on past seasons) that
+combines the v1 numbers above with tims_v2.py's even-strength and power-play ice time, shot rates and the
+opponent's penalty kill (inputs in features.py). If model.json or those stats can't be loaded, the v1 chances
+are used, so the day's rankings still go out.
+
+Data comes from the NHL's public APIs (api-web.nhle.com and api.nhle.com/stats). Only the standard library is used.
 """
 
 import argparse
@@ -55,6 +61,7 @@ OPP_FACTOR_RANGE = (0.8, 1.25)
 HOME_FACTOR, AWAY_FACTOR = 1.03, 0.97
 MISSED_GAMES_WARNING = 2                 # flag players who sat out this many straight team games
 HISTORY_TOP = 50                         # how many of each day's picks to keep in the history CSV
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model.json")
 HISTORY_FIELDS = ["date", "rank", "player_id", "name", "pos", "team", "opp", "gp", "goals", "shots_pg",
                   "sh_pct", "l10", "opp_factor", "xg", "prob", "flagged", "scored"]
 
@@ -269,7 +276,7 @@ def sort_key(r):
 def print_table(rows):
     w = max(len(r["name"]) for r in rows) + 2
     print(f"  {'#':>3}  {'Player':<{w}}{'Pos':<4}{'Team':<5}{'Opp':<7}{'GP':>3}{'G':>3}"
-          f"{'S/GP':>6}{'Sh%':>6}  {'Last 10':<13}{'OppD':>5}{'xG':>6}{'P(goal)':>9}")
+          f"{'S/GP':>6}{'Sh%':>6}  {'Last 10':<13}{'OppD':>5}{'PPmin':>6}{'xG':>6}{'P(goal)':>9}{'v1':>7}")
     def num(key, width, fmt, scale=1, suffix=""):
         return f"{format(r[key] * scale, fmt) + suffix:>{width}}" if key in r else f"{'-':>{width}}"
 
@@ -277,12 +284,13 @@ def print_table(rows):
         print(f"  {i:>3}  {r['name']:<{w}}{r['pos']:<4}{r['team']:<5}{r.get('opp', '-'):<7}"
               f"{r.get('gp', '-'):>3}{r.get('goals', '-'):>3}"
               f"{num('shots_pg', 6, '.2f')}{num('sh_pct', 6, '.1f', 100, '%')}  {r.get('l10', '-'):<13}"
-              f"{num('opp_factor', 5, '.2f')}{r['xg']:>6.2f}{r['prob'] * 100:>8.1f}%")
+              f"{num('opp_factor', 5, '.2f')}{num('pp_min', 6, '.1f')}{r['xg']:>6.2f}{r['prob'] * 100:>8.1f}%"
+              f"{num('v1_prob', 6, '.1f', 100, '%')}")
         for n in r["notes"]:
             print(f"      ^ {n}")
 
 
-def write_json(path, date, games, league_avg, ranked_groups):
+def write_json(path, date, games, league_avg, ranked_groups, model_name="v1"):
     """Save the rankings for the website (site/index.html reads this file)."""
     def player(rank, r):
         return {
@@ -292,7 +300,10 @@ def write_json(path, date, games, league_avg, ranked_groups):
             "sh_pct": round(r["sh_pct"], 4) if "sh_pct" in r else None,
             "l10": r.get("l10"),
             "opp_factor": round(r["opp_factor"], 3) if "opp_factor" in r else None,
+            "ev_min": round(r["ev_min"], 1) if "ev_min" in r else None,
+            "pp_min": round(r["pp_min"], 1) if "pp_min" in r else None,
             "xg": round(r["xg"], 3), "prob": round(r["prob"], 4),
+            "v1_prob": round(r["v1_prob"], 4) if "v1_prob" in r else None,
             "flagged": r.get("missed", 0) >= MISSED_GAMES_WARNING,
             "notes": r["notes"],
         }
@@ -300,6 +311,7 @@ def write_json(path, date, games, league_avg, ranked_groups):
         "date": date,
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "league_avg_ga": round(league_avg, 3) if league_avg else None,
+        "model": model_name,
         "games": sorted(
             ({"away": g["opp"], "home": team, "start": g["start"]} for team, g in games.items() if g["home"]),
             key=lambda g: (g["start"], g["home"]),
@@ -389,13 +401,56 @@ def record_history(json_path, csv_path, today, results_path=None):
     print(f"History: recorded top {HISTORY_TOP} picks for {date} in {csv_path}.")
 
 
-def rank_players(ctx, groups, league_avg):
-    """Analyze every player in [(group name, [(name, team_hint, player_id)])]; returns [(group name, sorted rows)]."""
+def load_regression(choice):
+    """The regression from model.json, or None for --model v1 (or if the file is missing or doesn't match)."""
+    if choice == "v1":
+        return None
+    try:
+        import features
+        return features.load_model(MODEL_PATH)
+    except Exception as e:  # never let the model file break the day's picks
+        print(f"Regression unavailable ({e}); using the v1 chances.")
+        return None
+
+
+def apply_regression(ctx, rows, model):
+    """Replace each playing skater's v1 chance with the regression's, keeping v1's as v1_xg / v1_prob.
+    Needs tims_v2's ice-time stats; if they can't be loaded, everyone keeps the v1 chance.
+    Returns how many players the regression scored."""
+    import features
+    import tims_v2
+    tims_v2.get_json = get_json  # share one page cache, so each player is fetched once
+    playing = [r for r in rows if "opp" in r and r.get("id")]
+    try:
+        ctx2, _ = tims_v2.load_context(ctx["date"])
+        yesterday = (dt.date.fromisoformat(ctx["date"]) - dt.timedelta(days=1)).isoformat()
+        played_yesterday = set(load_schedule(yesterday)[0])
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            v2 = list(pool.map(lambda r: tims_v2.analyze(r["name"], r["team"], ctx2, r["id"]), playing))
+    except Exception as e:
+        print(f"Regression unavailable ({e}); using the v1 chances.")
+        return 0
+    done = 0
+    for r1, r2 in zip(playing, v2):
+        if "opp" not in r2:  # v2's lookup failed for this player; he keeps the v1 chance
+            continue
+        xg, prob = features.score(model, features.inputs(r1, r2, ctx2, played_yesterday))
+        r1.update(v1_xg=r1["xg"], v1_prob=r1["prob"], xg=xg, prob=prob, ev_min=r2["ev_min"], pp_min=r2["pp_min"])
+        done += 1
+    print(f"Regression: scored {done} of {len(playing)} players" +
+          (f" (the other {len(playing) - done} keep their v1 chance)" if done < len(playing) else "") + "\n")
+    return done
+
+
+def rank_players(ctx, groups, league_avg, model=None):
+    """Analyze every player in [(group name, [(name, team_hint, player_id)])]; returns [(group name, sorted rows)].
+    With a regression `model`, its chances replace v1's before sorting; ctx["model_name"] says which was used."""
     all_players = [p for _, players in groups for p in players]
     print(f"Analyzing {len(all_players)} players for {ctx['date']} ({len(ctx['games']) // 2} games)", end="")
     print(f", league avg {league_avg:.2f} GA/GP" if league_avg else "", end="\n\n")
     with ThreadPoolExecutor(max_workers=16) as pool:
         results = list(pool.map(lambda p: analyze(p[0], p[1], ctx, p[2]), all_players))
+    ctx["model_name"] = "regression" if model and apply_regression(ctx, results, model) else "v1"
     ranked, i = [], 0
     for group_name, players in groups:
         ranked.append((group_name, sorted(results[i:i + len(players)], key=sort_key, reverse=True)))
@@ -403,7 +458,7 @@ def rank_players(ctx, groups, league_avg):
     return ranked
 
 
-def backfill(start, today, csv_path, results_path):
+def backfill(start, today, csv_path, results_path, model=None):
     """Re-rank every game day from `start` to yesterday as if it were that morning, and log each one
     to the history CSV and results JSON (days already in the CSV are skipped).
     ponytail: uses today's rosters, so players since traded/sent down are on their current team or missing."""
@@ -417,8 +472,8 @@ def backfill(start, today, csv_path, results_path):
                 continue
             defense, league_avg = load_defense(date)
             ctx = {"date": date, "games": games, "season": season, "defense": defense}
-            ranked = rank_players(ctx, [(f"Everyone playing {date}", load_skaters(games))], league_avg)
-            write_json(day_json, date, games, league_avg, ranked)
+            ranked = rank_players(ctx, [(f"Everyone playing {date}", load_skaters(games))], league_avg, model)
+            write_json(day_json, date, games, league_avg, ranked, ctx["model_name"])
             record_history(day_json, csv_path, today, results_path)
 
 
@@ -438,6 +493,8 @@ def main():
     ap.add_argument("--backfill", metavar="START",
                     help="with --history, re-rank every game day from START (YYYY-MM-DD) to before --date and log them")
     ap.add_argument("--live", metavar="PATH", help="only save the date's live scores and goal scorers as JSON")
+    ap.add_argument("--model", choices=["regression", "v1"], default="regression",
+                    help="regression (model.json, the default) or v1 (the original formula)")
     args = ap.parse_args()
 
     if args.live:
@@ -447,7 +504,7 @@ def main():
     if args.backfill:
         if not args.history:
             sys.exit("--backfill needs --history CSV (and optionally --results JSON).")
-        backfill(args.backfill, args.date, args.history, args.results)
+        backfill(args.backfill, args.date, args.history, args.results, load_regression(args.model))
         return
 
     if args.history and args.json:
@@ -475,7 +532,7 @@ def main():
     else:
         groups = [(f"Everyone playing {args.date}", load_skaters(games))]
 
-    ranked = rank_players(ctx, groups, league_avg)
+    ranked = rank_players(ctx, groups, league_avg, load_regression(args.model))
     picks = []
     for group_name, rows in ranked:
         print(f"== {group_name} ==")
@@ -485,8 +542,8 @@ def main():
             picks.append((group_name, rows[0]))
 
     if args.json:
-        write_json(args.json, args.date, games, league_avg, ranked)
-        print(f"Saved rankings to {args.json}\n")
+        write_json(args.json, args.date, games, league_avg, ranked, ctx["model_name"])
+        print(f"Saved rankings to {args.json} (model: {ctx['model_name']})\n")
 
     print("Recommended picks:")
     for group_name, r in picks:

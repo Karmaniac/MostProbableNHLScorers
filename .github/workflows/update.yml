@@ -9,7 +9,8 @@ on:
   workflow_dispatch: # adds a "Run workflow" button on the Actions tab
   push:
     branches: [main]
-    paths: ["site/index.html", "site/history.html", "tims.py", ".github/workflows/update.yml"]
+    paths: ["site/index.html", "site/history.html", "tims.py", "tims_v2.py", "features.py", "model.json",
+            ".github/workflows/update.yml"]
 
 permissions:
   contents: write # commit the day's data.json

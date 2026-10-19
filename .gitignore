@@ -3,3 +3,4 @@ __pycache__/
 .claude/
 tonight.txt
 site/live.json
+training_data.csv
